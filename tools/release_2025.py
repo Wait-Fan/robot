@@ -8,7 +8,7 @@ import shutil
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-TARGET=Path(r'E:\范卓燃\码垛算法\文件\装箱算法\复现ananno2025算法\robot')
+TARGET=Path(r'E:\范卓燃\码垛算法\文件\装箱算法\robot\robot')
 ROOT_FILES=('.gitignore','main.py','README.md','requirements.txt','requirements-ga.txt','start_workbench.bat','progress.md')
 
 

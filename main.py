@@ -34,7 +34,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--pallet", nargs=3, type=float, metavar=("L", "W", "H"), help="覆盖输入中的托盘尺寸")
     p.add_argument("--support", type=float, default=1.0, help="最小底面支撑率，0 到 1")
     p.add_argument("--algorithm",choices=["basic","paper","robot2025"],default="basic",help="基础、2024两阶段、2025开放方向研究实现")
-    p.add_argument("--open-direction",choices=["+X","-X","+Y","-Y","+Z"],default="+Z",help="2025固定来向，负方向使用--open-direction=-X")
+    p.add_argument("--open-direction",choices=["+X","-X","+Y","-Y","+Z"],action="append",help="允许的接近侧，可重复指定多项；默认+Z，负方向使用--open-direction=-X")
     p.add_argument("--paper-config",type=Path,help="论文模式参数JSON；未提供的参数使用显式研究默认值")
     p.add_argument("--robot-scene",type=Path,help="为robot2025启用EC66离线IK/碰撞/路径检查；需要工位配置JSON")
     p.add_argument("--output-csv", type=Path, default=ROOT / "output" / "demo_placements.csv")
@@ -87,10 +87,10 @@ def main(argv: list[str] | None = None) -> int:
                 if dependency_dir.is_dir():sys.path.insert(0,str(dependency_dir))
                 from ananno_phase2.robot_offline import OfflineRobotVerifier
                 verifier=OfflineRobotVerifier(args.robot_scene)
-            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(args.open_direction),robot_verifier=verifier)
+            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(open_directions=args.open_direction or ('+Z',)),robot_verifier=verifier)
         else:packer=PaperTwoPhasePacker(pallet,PaperConfig(**parameters))
         result=packer.pack(boxes,log=print)
-        print(("EC66离线IK、网格碰撞、完整抓放路径已通过当前配置模型检查；未验证真实硬件。" if args.robot_scene else "两阶段研究实现；2025模式仅验证固定开放侧，机械臂IK/关节轨迹未验证。") if args.algorithm=="robot2025" else
+        print(("EC66离线IK、网格碰撞、完整抓放路径已通过当前配置模型检查；未验证真实硬件。" if args.robot_scene else "两阶段研究实现；2025模式在允许的开放侧中逐箱选择方向，机械臂IK/关节轨迹未验证。") if args.algorithm=="robot2025" else
               "论文两阶段研究实现：层/块 + GA + EP；参数假设已记录，论文数值等价尚未验证。")
     else:
         result = FixedSequencePacker(pallet, args.support).pack(boxes)

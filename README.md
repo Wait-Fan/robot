@@ -22,7 +22,7 @@ python main.py --algorithm robot2025 --input-json examples/ec66_offline_demo.jso
 在PowerShell运行：
 
 ```powershell
-Set-Location -LiteralPath 'E:\范卓燃\码垛算法\文件\装箱算法\复现ananno2025算法\robot'
+Set-Location -LiteralPath 'E:\范卓燃\码垛算法\文件\装箱算法\robot\robot'
 & 'E:\program\python3.13\python.exe' -m pip install -r requirements-ga.txt
 & 'E:\program\python3.13\python.exe' main.py
 ```
@@ -81,3 +81,7 @@ $env:PYTHONPATH='src;.'
 ```
 
 `tools/release_2025.py sync`只接受指定2025目录，已有变更文件先备份；不会同步至2024目录。`tools/package_workbench.py`生成独立`ananno2025_reachability_workbench.zip`，不会覆盖2024压缩包。
+
+## 多个接近开放侧
+
+2025工作台的“装箱设置”支持勾选多个开放侧，每箱从允许方向中选择可行侧，至少选一项。修改后需要重新计算。命令行可重复使用`--open-direction`，例如`--open-direction=+Z --open-direction=-X`。详见[多个开放侧设置](docs/多个开放侧设置.md)。

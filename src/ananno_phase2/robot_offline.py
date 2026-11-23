@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from .ec66_model import EC66Model, pose_matrix
 from .robot_rrt import rrt_connect
+from .robot_approach import OpenDirectionModel
 
 class OfflineRobotVerifier:
     def __init__(self,scene_path):
@@ -74,10 +75,11 @@ class OfflineRobotVerifier:
         # Pallets are independently presented at the same workcell. Finish one
         # pallet before resetting to the configured state for the next pallet.
         ordered=sorted(placements,key=lambda p:(p.pallet_index,p.order))
-        signature=(pallet.length,pallet.width,pallet.max_height,approach.open_direction,
+        signature=(pallet.length,pallet.width,pallet.max_height,approach.open_directions,
             tuple((p.box.id,p.box.length,p.box.width,p.box.height,p.pallet_index,p.point.x,p.point.y,p.point.z,p.orientation.code,p.order,p.orientation.length,p.orientation.width,p.orientation.height) for p in ordered))
         if signature in self.cache:return self.cache[signature]
         self.calls+=1;began=time.monotonic();stages=[];placed=[];active_pallet=None;current=self.initial.copy();failure_operation=None
+        directions_by_box=[];previous_geometry=[];side_model=OpenDirectionModel(approach)
         budget=float(self.config.get('sequence_budget_seconds',30.))
         if not math.isfinite(budget) or budget<=0:raise ValueError('Sequence budget must be positive')
         thickness=float(self.config.get('pallet_thickness_m',.02))
@@ -90,6 +92,7 @@ class OfflineRobotVerifier:
                 'backend':'ec66_mujoco_rrt_connect','hardware_verified':False,
                 'model_parameters_sha256':self.model_fingerprint,'failed_operation':failure_operation,
                 'scene_calibration_status':self.config.get('calibration_status','not_measured'),
+                'open_directions':list(approach.open_directions),'directions_by_box':list(directions_by_box),
                 'ik_verified':status=='verified','joint_path_verified':status=='verified',
                 'collision_geometry':'provided_mesh_convex_hulls',
                 'collision_validation':'discrete_joint_edges','joint_check_resolution_rad':self.resolution,
@@ -117,7 +120,10 @@ class OfflineRobotVerifier:
         for p in ordered:
             if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
             if p.pallet_index!=active_pallet:
-                active_pallet=p.pallet_index;placed=[];current=self.initial.copy()
+                active_pallet=p.pallet_index;placed=[];previous_geometry=[];current=self.initial.copy()
+            available=side_model.available_directions(p,previous_geometry)
+            if not available:return result('rejected','all_allowed_open_sides_blocked',p.box.id)
+            box_stage_start=len(stages)
             self.robot.attachment=None
             size=np.array([p.box.length,p.box.width,p.box.height])*self.scale
             oriented_size=np.array([p.orientation.length,p.orientation.width,p.orientation.height])*self.scale
@@ -131,23 +137,41 @@ class OfflineRobotVerifier:
             self.robot.set_obstacles(environment+placed+[source])
             if not self.robot.valid(current):return result('rejected','start_state_in_collision',p.box.id)
             target=self.base_pallet@center@box_tcp
-            direction=np.zeros(3);direction['XYZ'.index(approach.open_direction[1])]=1 if approach.open_direction[0]=='+' else -1
-            direction=self.base_pallet[:3,:3]@direction
             pre_pick=self.pick.copy();pre_pick[:3,3]+=[0,0,self.distance]
-            pre_place=target.copy();pre_place[:3,3]+=direction*self.distance
             for name,pose,linear in [('approach_pick',pre_pick,False),('pick',self.pick,True)]:
                 reason=move(name,pose,linear)
                 if reason:return result('unverified',reason,p.box.id)
             self.robot.set_obstacles(environment+placed)
             self.robot.attachment=(size,np.linalg.inv(box_tcp))
             if not self.robot.valid(current):return result('rejected','carried_box_collision_at_pick',p.box.id)
-            for name,pose,linear in [('lift',pre_pick,True),('transfer',pre_place,False),('place',target,True)]:
-                reason=move(name,pose,linear)
-                if reason:return result('unverified',reason,p.box.id)
-            self.robot.attachment=None
-            placed.append({'id':'placed_'+p.box.id,'size':size.tolist(),'pose':(self.base_pallet@center).tolist()})
-            self.robot.set_obstacles(environment+placed)
-            reason=move('retreat',pre_place,True)
+            reason=move('lift',pre_pick,True)
+            if reason:return result('unverified',reason,p.box.id)
+            held_state=current.copy();held_stage_count=len(stages);placed_count=len(placed);attempts=[]
+            for chosen_direction in available:
+                if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
+                current=held_state.copy();del stages[held_stage_count:];del placed[placed_count:]
+                self.robot.set_obstacles(environment+placed)
+                self.robot.attachment=(size,np.linalg.inv(box_tcp))
+                direction=np.zeros(3);direction['XYZ'.index(chosen_direction[1])]=1 if chosen_direction[0]=='+' else -1
+                direction=self.base_pallet[:3,:3]@direction
+                pre_place=target.copy();pre_place[:3,3]+=direction*self.distance
+                reason=move('transfer',pre_place)
+                if not reason:reason=move('place',target,True)
+                if not reason:
+                    self.robot.attachment=None
+                    placed.append({'id':'placed_'+p.box.id,'size':size.tolist(),'pose':(self.base_pallet@center).tolist()})
+                    self.robot.set_obstacles(environment+placed)
+                    reason=move('retreat',pre_place,True)
+                attempts.append({'open_direction':chosen_direction,'passed':not bool(reason),'reason':reason})
+                if not reason:
+                    for stage in stages[box_stage_start:]:stage['open_direction']=chosen_direction
+                    directions_by_box.append({'box_id':p.box.id,'pallet':p.pallet_index+1,
+                                              'open_direction':chosen_direction,'attempts':attempts})
+                    previous_geometry.append(p)
+                    break
+                if time.monotonic()-began>=budget:break
+            else:
+                return result('unverified',reason,p.box.id)
             if reason:return result('unverified',reason,p.box.id)
         failure_operation=None
         return result('verified')

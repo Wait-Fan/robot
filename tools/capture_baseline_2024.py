@@ -32,7 +32,7 @@ def main():
     archive=folder/'baseline_2024_source.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         for p in files:z.write(p,p.relative_to(args.source).as_posix())
-    document={'source_project':str(args.source.resolve()),'inherited_target':r'E:\范卓燃\码垛算法\文件\装箱算法\复现ananno2025算法\robot',
+    document={'source_project':str(args.source.resolve()),'inherited_target':r'E:\范卓燃\码垛算法\文件\装箱算法\robot\robot',
         'captured_at':datetime.now().astimezone().isoformat(),'baseline':'Ananno2024 staged research implementation v0.4.1',
         'numerical_equivalence_verified':False,'snapshot_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'files':records}
     manifest_path.write_text(json.dumps(document,ensure_ascii=False,indent=2),encoding='utf-8')

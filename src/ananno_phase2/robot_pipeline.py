@@ -68,7 +68,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
     def pack(self,boxes,*,progress=None,cancelled=None,log=None):
         self.evaluations=self.rejected=self.robot_rejected=0
         if log:
-            log(f'Ananno2025固定来向{self.approach.open_direction}；'+
+            log(f'Ananno2025允许来向{"、".join(self.approach.open_directions)}；'+
                 ('已启用EC66离线IK、碰撞与路径验证。' if self.robot_verifier is not None else '轻量开放侧模型，未启用机械臂IK/关节轨迹验证。'))
         result=super().pack(boxes,progress=progress,cancelled=cancelled,log=log)
         ordered,audit=executable_sequence(result.placements,self.pallet,self.config,self.approach,cancelled)
@@ -78,10 +78,14 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
             motion_audit=self.robot_verifier.verify(ordered,self.pallet,self.approach,cancelled=cancelled)
             if not motion_audit['passed']:
                 raise NoPaperSolution('EC66最终序列验证未通过：'+motion_audit.get('reason','unknown'))
-        self.robot_diagnostics={**audit,'model':'fixed_open_direction_rigid_box_sweep',
+            actual_directions={(c['pallet'],c['box_id']):c['open_direction'] for c in motion_audit.get('directions_by_box',[])}
+            for check in audit['checks']:
+                key=(check['pallet'],check['box_id'])
+                if key in actual_directions:check['open_direction']=actual_directions[key]
+        self.robot_diagnostics={**audit,'model':('fixed_open_direction_rigid_box_sweep' if len(self.approach.open_directions)==1 else 'multiple_open_sides_rigid_box_sweep'),
             'evaluations_inside_ga':self.evaluations,'rejected_inside_ga':self.rejected,
             'ik_verified':False,'joint_trajectory_verified':False,'robotstudio_verified':False,
-            'assumptions':['Fixed axis-aligned straight final approach; box AABB only; gripper/arm not modeled',
+            'assumptions':['One allowed axis-aligned straight final approach per box; box AABB only; gripper/arm not modeled',
                 'All contacting lower boxes are conservative support prerequisites',
                 'Failed Phase1 pallet blocks return to GA as implementation choice',
                 'Each pallet is independently presented at the same workcell; inter-pallet obstacles not modeled',
@@ -96,7 +100,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
 
 def annotate_robot_document(document,packer):
     annotate_document(document,packer.diagnostics)
-    document['algorithm']='Ananno 2025 fixed-open-direction research implementation'
+    document['algorithm']='Ananno 2025 allowed-open-sides research implementation'
     document['reproduction_status']='lightweight_approach_model_integrated_robot_validation_pending'
     if packer.robot_verifier is not None:
         document['algorithm']='Ananno2025 research extension with offline EC66 IK/collision/RRT-Connect'
