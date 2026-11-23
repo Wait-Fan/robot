@@ -1,0 +1,419 @@
+{
+  "status": "source_assets_extracted_and_structurally_checked",
+  "source_archive": "E:\\范卓燃\\具身智能&机器人\\庾家豪毕设.zip",
+  "source_archive_sha256": "141667eff5ca64ba94661c6f87cdd576f83fa8fc6e5bd47b77546a4b2f5d5301",
+  "robot_name": "robot_ec66",
+  "base_link": "base_link",
+  "tip_link": "cup_link",
+  "planning_group": "arm_group",
+  "movable_joint_count": 6,
+  "links": [
+    {
+      "name": "base_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "shoulder_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "upper_arm_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "forearm_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "wrist_1_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "wrist_2_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "wrist_3_link",
+      "collision_elements": 1
+    },
+    {
+      "name": "link_base",
+      "collision_elements": 1
+    },
+    {
+      "name": "cup_link",
+      "collision_elements": 1
+    }
+  ],
+  "joints": [
+    {
+      "name": "shoulder_pan_joint",
+      "type": "revolute",
+      "parent": "base_link",
+      "child": "shoulder_link",
+      "origin": {
+        "xyz": "0 0 0.096",
+        "rpy": "0 0 0"
+      },
+      "limits": {
+        "lower": "-3.14",
+        "upper": "3.14",
+        "effort": "80",
+        "velocity": "1.57"
+      }
+    },
+    {
+      "name": "shoulder_lift_joint",
+      "type": "revolute",
+      "parent": "shoulder_link",
+      "child": "upper_arm_link",
+      "origin": {
+        "xyz": "0 -0.138 0",
+        "rpy": "1.5708 0 0"
+      },
+      "limits": {
+        "lower": "-1.571",
+        "upper": "1.571",
+        "effort": "100",
+        "velocity": "1.57"
+      }
+    },
+    {
+      "name": "forearm_joint",
+      "type": "revolute",
+      "parent": "upper_arm_link",
+      "child": "forearm_link",
+      "origin": {
+        "xyz": "0 0.418 -0.114",
+        "rpy": "3.1416 0 0"
+      },
+      "limits": {
+        "lower": "-2.793",
+        "upper": "2.793",
+        "effort": "80",
+        "velocity": "1.57"
+      }
+    },
+    {
+      "name": "wrist_1_joint",
+      "type": "revolute",
+      "parent": "forearm_link",
+      "child": "wrist_1_link",
+      "origin": {
+        "xyz": "0 -0.398 0",
+        "rpy": "1.5708 0 0"
+      },
+      "limits": {
+        "lower": "-3.142",
+        "upper": "3.142",
+        "effort": "50",
+        "velocity": "2.094"
+      }
+    },
+    {
+      "name": "wrist_2_joint",
+      "type": "revolute",
+      "parent": "wrist_1_link",
+      "child": "wrist_2_link",
+      "origin": {
+        "xyz": "0 -0.098 0",
+        "rpy": "1.5708 0 0"
+      },
+      "limits": {
+        "lower": "-1.571",
+        "upper": "1.571",
+        "effort": "50",
+        "velocity": "2.094"
+      }
+    },
+    {
+      "name": "wrist_3_joint",
+      "type": "revolute",
+      "parent": "wrist_2_link",
+      "child": "wrist_3_link",
+      "origin": {
+        "xyz": "0 0.098 0",
+        "rpy": "1.5708 0 0"
+      },
+      "limits": {
+        "lower": "-6.283",
+        "upper": "6.283",
+        "effort": "30",
+        "velocity": "3.142"
+      }
+    },
+    {
+      "name": "j7",
+      "type": "fixed",
+      "parent": "wrist_3_link",
+      "child": "link_base",
+      "origin": {
+        "xyz": "0 0.089 0",
+        "rpy": "1.5708 0 0"
+      },
+      "limits": null
+    },
+    {
+      "name": "tool0",
+      "type": "fixed",
+      "parent": "link_base",
+      "child": "cup_link",
+      "origin": {
+        "xyz": "0 0 -0.1085",
+        "rpy": "0 0 0"
+      },
+      "limits": null
+    }
+  ],
+  "missing_mesh_references": [],
+  "review_items": [
+    {
+      "type": "named_state_outside_urdf_limit",
+      "state": "home",
+      "joint": "shoulder_pan_joint",
+      "value": 3.1416,
+      "limits": {
+        "lower": "-3.14",
+        "upper": "3.14",
+        "effort": "80",
+        "velocity": "1.57"
+      }
+    },
+    {
+      "type": "tip_frame_needs_review",
+      "details": "kinematics.yaml uses tip_link tool0, which is a fixed-joint name in this URDF; the SRDF chain ends at link cup_link."
+    }
+  ],
+  "hardware_verified": false,
+  "ik_verified": false,
+  "motion_planning_verified": false,
+  "pending_parameters": [
+    "Measured base-to-pallet transform",
+    "Measured base-to-pick transform",
+    "Verified TCP and box grasp transform",
+    "Joint mapping and initial state",
+    "Target ROS2/MoveIt environment or Windows backend selection"
+  ],
+  "files": [
+    {
+      "path": "robot_config/CMakeLists.txt",
+      "bytes": 412,
+      "sha256": "de007452082a5a73adb1bad3715883e80efac9efd5ff5155b0f5b042e04613cc"
+    },
+    {
+      "path": "robot_config/config/initial_positions.yaml",
+      "bytes": 214,
+      "sha256": "7baa70433c33655e7d4a5514f1e8a9540a0e55588bdb952a62d5a876c3580c97"
+    },
+    {
+      "path": "robot_config/config/joint_limits.yaml",
+      "bytes": 1530,
+      "sha256": "3293b78626b1fa1a6890c51dda8ef679c8e812ad11b8cf3b92f9486d6d72d1a3"
+    },
+    {
+      "path": "robot_config/config/kinematics.yaml",
+      "bytes": 205,
+      "sha256": "422ee41bb893cf35d7441fba90687c64fe32a9d87db2acdf482de6f0041dc40e"
+    },
+    {
+      "path": "robot_config/config/moveit.rviz",
+      "bytes": 8234,
+      "sha256": "aef6b5322c6f6ff1bde6ce1477094b717af91825e7b9fcc7331dcab610879a13"
+    },
+    {
+      "path": "robot_config/config/moveit_controllers.yaml",
+      "bytes": 442,
+      "sha256": "957f29e3341b3bf96f5685eaec7d4ec0064aa57a05a47da2616aa21fcb13555e"
+    },
+    {
+      "path": "robot_config/config/ompl_planning.yaml",
+      "bytes": 891,
+      "sha256": "306c990cabce736831dac675e56d53c5a00ba0386a9295825eff5cec49eb3427"
+    },
+    {
+      "path": "robot_config/config/pilz_cartesian_limits.yaml",
+      "bytes": 133,
+      "sha256": "fed80b213b77f13fb7b913d703609a66caa72ccb0617b41e83d3057e31749047"
+    },
+    {
+      "path": "robot_config/config/robot_ec66.ros2_control.xacro",
+      "bytes": 2678,
+      "sha256": "945354337819f7f684cad890500c6792eddf924ebb66a642f681f2fac33aad55"
+    },
+    {
+      "path": "robot_config/config/robot_ec66.srdf",
+      "bytes": 3903,
+      "sha256": "a9a6c9d0871ceb44ad0ab8e382e681cdf7c698f878a7c96dbb350bb8c3ca2967"
+    },
+    {
+      "path": "robot_config/config/robot_ec66.urdf.xacro",
+      "bytes": 508,
+      "sha256": "8e4c445de7dd043a69df7bf25e09bad7145845ce5a5fa46305cf691e12d582ad"
+    },
+    {
+      "path": "robot_config/config/ros2_controllers.yaml",
+      "bytes": 646,
+      "sha256": "78801736e60eed9790e424f32b7d2aaefc2aacfc31125668293982ac5d47e924"
+    },
+    {
+      "path": "robot_config/launch/add_all_env.launch.py",
+      "bytes": 4926,
+      "sha256": "bef5484abf28fbdc62224b840936ca98b03bf9b4528239123ea113de06ed1e93"
+    },
+    {
+      "path": "robot_config/launch/add_chexiang.launch.py",
+      "bytes": 2868,
+      "sha256": "b9e1de2797ccebc4ef87f25c6bd695091d554a9ede6eeb6cd0254519b8cc9096"
+    },
+    {
+      "path": "robot_config/launch/add_worktable.launch.py",
+      "bytes": 4031,
+      "sha256": "4eb23b0b38fb3d99b545f4d5d0259d4229af19c434bcb553eb33a9f3765c3fa3"
+    },
+    {
+      "path": "robot_config/launch/demo.launch.py",
+      "bytes": 340,
+      "sha256": "4beb5aae95c4522e3f63f37f2787d6ae9a512da78117f5e189c70729ab40e19c"
+    },
+    {
+      "path": "robot_config/launch/dual_cameras.launch.py",
+      "bytes": 631,
+      "sha256": "9bb4f74b383be223fd307a6851fd28a42af0ef0f00cdc0d53bbd12c962c784e2"
+    },
+    {
+      "path": "robot_config/launch/move_group.launch.py",
+      "bytes": 317,
+      "sha256": "213aa74864526f3cc474a795bb73f58aa9bb928976a3a4bc3eafbe4dc3893e32"
+    },
+    {
+      "path": "robot_config/launch/moveit_rviz.launch.py",
+      "bytes": 319,
+      "sha256": "4749dc810a4ab85fbe5e46a63f6610563ad7bb7bed1df29a0a3e6abb2a4cceb0"
+    },
+    {
+      "path": "robot_config/launch/rsp.launch.py",
+      "bytes": 303,
+      "sha256": "5c58d03ee58eb4b40412d2e65dcc46044509b0a823efd20c70743aa75b133cf5"
+    },
+    {
+      "path": "robot_config/launch/setup_assistant.launch.py",
+      "bytes": 327,
+      "sha256": "ae231776d31995ca8d231dc84a122cd78bec69909d29c67af17d744bde83f67f"
+    },
+    {
+      "path": "robot_config/launch/spawn_controllers.launch.py",
+      "bytes": 331,
+      "sha256": "06635d7ad82e176609e8893da37156b4a0b66883e4fa46bb43b03ad38525ee9a"
+    },
+    {
+      "path": "robot_config/launch/static_virtual_joint_tfs.launch.py",
+      "bytes": 345,
+      "sha256": "7c6fab1c7364bdebca395c480b3323be2fec7043c4195dd77c83a42484d93ca4"
+    },
+    {
+      "path": "robot_config/launch/warehouse_db.launch.py",
+      "bytes": 321,
+      "sha256": "a112a4fae63e9036e1610023a97fc6c76806ba66729e6a771b2539001630edbb"
+    },
+    {
+      "path": "robot_config/package.xml",
+      "bytes": 2181,
+      "sha256": "5607dd386f6f0e52bf2abc1f5ec661f7b29e712007fbc1a0a6ee0e2087c82b0d"
+    },
+    {
+      "path": "robot_ec66/CMakeLists.txt",
+      "bytes": 1074,
+      "sha256": "108f50e70960f29d6e3df5e594fa0af1c92f6db65407f16546eaa03259cfb463"
+    },
+    {
+      "path": "robot_ec66/config/joint_names_robot.ec66.yaml",
+      "bytes": 143,
+      "sha256": "d670ce97d9a60e6133a5ada8d0705292511c161ba288ef930cbc9b60ce317818"
+    },
+    {
+      "path": "robot_ec66/config/robot.model.rviz",
+      "bytes": 7139,
+      "sha256": "af5060a5c56998122d5e8ffdf5fb3002a9a3e3ef00e10201e6be384b5a3d7f50"
+    },
+    {
+      "path": "robot_ec66/launch/display.launch.py",
+      "bytes": 1291,
+      "sha256": "6f180541bcbaade9a26ad3fd86f42249d781aec13546ca4f651a3d108e03a2a6"
+    },
+    {
+      "path": "robot_ec66/launch/gazebo.launch.py",
+      "bytes": 1689,
+      "sha256": "3b58c5e3da4c0f576a1ea206f5c923c5cd9910236121aaa925878d70d72e60a3"
+    },
+    {
+      "path": "robot_ec66/launch/start_rsp.launch.py",
+      "bytes": 791,
+      "sha256": "fe3466517105dccf8580ccb16a4f105fd353c755f87cdfe19c39680f449ae6a4"
+    },
+    {
+      "path": "robot_ec66/meshes/base_link.stl",
+      "bytes": 118484,
+      "sha256": "3d9141993bff46369291895d4ec1e0508f7ae4c2f69ebc4bea7320a720234835"
+    },
+    {
+      "path": "robot_ec66/meshes/cup_link.stl",
+      "bytes": 257184,
+      "sha256": "c0e78aadd5164f55def1063e643f949dfbe3ac6b6b1e3f27cf99834fbdc419b8"
+    },
+    {
+      "path": "robot_ec66/meshes/forearm_link.stl",
+      "bytes": 967984,
+      "sha256": "bb5ecc9104f2ab417d25d1794ca8635b355e65db1efacf591986e209b7a8e323"
+    },
+    {
+      "path": "robot_ec66/meshes/link_base.stl",
+      "bytes": 7084,
+      "sha256": "bb6b6effb79b16aeea6b26f1008c85bbe7109e0492a7ceec06795d0f438cb5ea"
+    },
+    {
+      "path": "robot_ec66/meshes/shoulder_link.stl",
+      "bytes": 759684,
+      "sha256": "2d6fd2f84bc091136412b3fb01e42a1037160d72a5e7dd384be8ec47d429b244"
+    },
+    {
+      "path": "robot_ec66/meshes/upper_arm_link.stl",
+      "bytes": 1726684,
+      "sha256": "2927d14da308fce266edbf211d3670ae9159663654a1683bbd568b52f374e775"
+    },
+    {
+      "path": "robot_ec66/meshes/wrist_1_link.stl",
+      "bytes": 672784,
+      "sha256": "40594a74743f389ce0e4ae5f7778a85d7b1cdc5bfd1783004957115ab1815481"
+    },
+    {
+      "path": "robot_ec66/meshes/wrist_2_link.stl",
+      "bytes": 672784,
+      "sha256": "a7aafdbb9685d6c44eaa77b092fcce16de80d8a491d70e66293be090e266c121"
+    },
+    {
+      "path": "robot_ec66/meshes/wrist_3_link.stl",
+      "bytes": 370384,
+      "sha256": "3f2096b0ecdfda589df7b63ce1a551a76d2d344852668677de54fb8d3c2acf1a"
+    },
+    {
+      "path": "robot_ec66/package.xml",
+      "bytes": 802,
+      "sha256": "0ea02fa41a1b93e38057fe7f4fba4300946ca152d24d451871cce1ec401ae822"
+    },
+    {
+      "path": "robot_ec66/rviz/urdf.rviz",
+      "bytes": 864,
+      "sha256": "9bf2dd765e5ec5547189db2d3b0badf09232337165519f9d6a5135dea668d341"
+    },
+    {
+      "path": "robot_ec66/setup.py",
+      "bytes": 311,
+      "sha256": "e99085447f66085898d7c3db33740b58c91481e95c89f6aa0534f3d1116494b8"
+    },
+    {
+      "path": "robot_ec66/urdf/robot.ec66.urdf",
+      "bytes": 9971,
+      "sha256": "b8ba8efdef365ef7f068c10b082a3306d5b561718f8bae290a2b28e603a4acb0"
+    }
+  ]
+}

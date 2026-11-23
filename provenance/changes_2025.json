@@ -1,0 +1,131 @@
+{
+  "version": "0.1.0",
+  "changes": [
+    {
+      "file": ".vscode/launch.json",
+      "change": "modified",
+      "baseline_sha256": "36ed360b23c2567d45b8233856c8e44f33fc643aa35c0319f7692e1ab51d3d00",
+      "sha256": "5837230da1abf8ff9468a684ad7b35168ee3c13a3b08a0701eef78f1f0bff039"
+    },
+    {
+      "file": "docs/ananno2025-scope.md",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "d55d054614554ab930da6c0915573b5a4a75ae5829648d69bc434b42dc1c3287"
+    },
+    {
+      "file": "docs/superpowers/plans/2026-11-03-ananno2025.md",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "cdbc31f36742a58475c8995716b286050298845e9ae5de09bce31ff5662d18e1"
+    },
+    {
+      "file": "main.py",
+      "change": "modified",
+      "baseline_sha256": "fefc4453ccc1d5dfc60325e081493df543cd6471fe5b3228aab59581923cc10c",
+      "sha256": "56169483ba24d8cbafac2d14195499fe2affdf9ab9b8c45d119110fbae434a30"
+    },
+    {
+      "file": "progress.md",
+      "change": "modified",
+      "baseline_sha256": "c5629a5a50cdc2438ddf972eb2deab6a6f8d349d618088b8f51fe079f089d5c4",
+      "sha256": "364706b10b192cccf8a56ba34f2adc8bed85cd801e7f18e5fcc77df2fa037f9b"
+    },
+    {
+      "file": "README.md",
+      "change": "modified",
+      "baseline_sha256": "83dcd65a6e9aab4a2f9321b7d5c4134bfeee4c4ef475613cde4f91bb9eb6d101",
+      "sha256": "07d96f456155dadef93c0cabe8478b0c016203ed1da248abe8ac0a8c3b5b223b"
+    },
+    {
+      "file": "src/ananno_phase2/gui.py",
+      "change": "modified",
+      "baseline_sha256": "5df505f48bce4c1ea5d8e661a59a88651e00aab92f5111d77b185b7b620bc676",
+      "sha256": "acece399beda51d21acd1803c333e4a3ea24e76c3db4103a8f6b3e35fcf9e413"
+    },
+    {
+      "file": "src/ananno_phase2/paper_pipeline.py",
+      "change": "modified",
+      "baseline_sha256": "5f0c9fb17a6330355a846893de1c105d70f3f618c18d05ca9aad43ea416f713e",
+      "sha256": "8768b48bc03008b8ce9c2c6164d52aab56c2f00bd16ddcb7a3edb9bfe102ca5a"
+    },
+    {
+      "file": "src/ananno_phase2/qt_workbench.py",
+      "change": "modified",
+      "baseline_sha256": "1f1428a5bd1f6ddc7d208d1fd2db0f855198e911534cda10c0d8f85074357194",
+      "sha256": "46533f57255bf0a3f73440381412c86afd12eb6e09ff508c52b9ebe9d8e1ab12"
+    },
+    {
+      "file": "src/ananno_phase2/qt_workbench_2025.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "7ad48db2fc1786a4ebdc589e896a55ffd42dbea3532005bd01f1c171a1aeec1e"
+    },
+    {
+      "file": "src/ananno_phase2/robot_approach.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "c95add15229c9d8d818889de16ced2f89e7a1db09f08a1a470b382fe0fff6a50"
+    },
+    {
+      "file": "src/ananno_phase2/robot_pipeline.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "9f4f50181ec40e217938764635b8d8d267b09be8cc4224c03e84b076a796af6a"
+    },
+    {
+      "file": "src/ananno_phase2/workbench_service.py",
+      "change": "modified",
+      "baseline_sha256": "c02bf0fc14b1bc454ee094fe182339b7e8160384b05ae66991b5a402d9c4d0a1",
+      "sha256": "cdc82d2830f67a60ac57e967e7329d3d179de7236815a89835cd303d33e98fa6"
+    },
+    {
+      "file": "start_workbench.bat",
+      "change": "modified",
+      "baseline_sha256": "fa117d79b8e06797b886db349893650dc11cae0ead8ca21b76b54526a76a23f0",
+      "sha256": "3c895ee3333cbd67886db61e0cbef79ba542ab8c93f830270d58e6bd46b6fcc4"
+    },
+    {
+      "file": "tests/test_robot_2025.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "0f05675bbfd55da0ea3d1bc63190e04d1526a0e2cb2b0c30ea240e3016f0daca"
+    },
+    {
+      "file": "tests/test_robot_ui_cli.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "d33838a68206bbabe63a5792a89ac1fbf1795e10fb79034dd662c3b455865b83"
+    },
+    {
+      "file": "tools/capture_baseline_2024.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "04b039f963ca83c6b41dae4d50f5fee623b92d2efb80649c4f524190973805bb"
+    },
+    {
+      "file": "tools/package_workbench.py",
+      "change": "modified",
+      "baseline_sha256": "23c1812d3bf160dfd2f366ff9234d9a5bbf4cdb5e44384fcce5edfce1e5b2a25",
+      "sha256": "e323c767aba94b6c6ea3010f23cfdeb276591ce7c0156e802a5515f3ae4afca7"
+    },
+    {
+      "file": "tools/release_2025.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "43642ae1fbb4fa6e89a971b01d3b70204a80c0b4e764705628ccce4424a1cf7f"
+    },
+    {
+      "file": "tools/sync_workbench.ps1",
+      "change": "modified",
+      "baseline_sha256": "f893a5da3553a877ba8df705d1c25e3bb1e8d2f0c6f4f7adb9ba95ea03a8bd6b",
+      "sha256": "a978f83a958b36257d2c0ba677bf9bbb0c3c542466fa0a28688c49f3c5018266"
+    },
+    {
+      "file": "tools/verify_robot2025.py",
+      "change": "added",
+      "baseline_sha256": null,
+      "sha256": "d9e2421bbb299d5d6e465af160b0a0bea040b3af2f4a1edb0546dbbfb61ca820"
+    }
+  ]
+}

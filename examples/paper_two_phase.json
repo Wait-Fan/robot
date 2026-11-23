@@ -1,0 +1,7 @@
+{
+  "pallet": {"length": 4, "width": 4, "height": 6},
+  "boxes": [
+    {"box_type": "A", "length": 2, "width": 2, "height": 2, "target_num": 8, "weight": 1},
+    {"box_type": "B", "length": 1, "width": 1, "height": 1, "target_num": 1, "weight": 1}
+  ]
+}

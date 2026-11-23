@@ -1,0 +1,52 @@
+EC66 Windows 离线机器人检查
+
+当前实现：
+1. 基于用户提供的URDF、SRDF和9个连杆网格加载6轴EC66与吸盘。
+2. 使用模型雅可比进行数值IK，检查关节限位、机器人自身及环境碰撞。
+3. 机械臂网格采用凸包碰撞近似；搬运箱与环境箱体使用OBB分离轴检查。
+4. 双树RRT-Connect规划搬运路径；接近、放置、撤离使用笛卡尔路点IK与关节边检查。
+5. 抓起时附加箱体，放下后转成固定障碍；同盘下一箱从上一箱撤离构型继续。
+6. 第一阶段不通过的盘退回GA；GA内部拒绝未通过机器人验证的候选；最终完整复核。
+7. 输出每箱6段操作、关节路径、静止到静止三次插值时间、运动量与TCP折线路径长度。
+
+如何使用：
+- 双击 start_ec66_offline_demo.bat，运行无需图形窗口的两箱示例。
+- 此脚本使用E:/program/python3.13/python.exe；可通过PACKING_PYTHON覆盖。
+- 当前已安装的独立依赖位于robot_runtime/site-packages，不改原Python全局依赖。
+- 也可以用requirements-robot.txt在相容的Python环境中安装依赖。
+- 命令行给robot2025增加 --robot-scene examples/ec66_scene_demo.json 即启用。
+- 不提供--robot-scene时，保持原来的固定开放侧模型，不会自动宣称已验证IK。
+- 当前工作台界面尚未添加机器人场景选择及机器人动画；先完成后端，后续再接显示。
+
+示例与实验室标定必须区分：
+examples/ec66_scene_demo.json 是软件机制测试，不是实测实验室工位！示例箱子为10mm小立方体。
+该配置使用提供模型中的合法构型构造可复现目标，目的是验证求解与优化反馈。
+正式计算之前需要按实际工位填写：
+- length_scale_to_m：装箱输入单位到米的倍率，毫米用0.001。
+- base_T_pallet：托盘底部角点坐标系到机器人基坐标的4x4变换。
+- pick_tcp_pose：取箱时TCP相对机器人基座的4x4位姿。
+- box_T_tcp_rotation：原始箱体局部坐标到TCP朝向的4x4纯旋转。
+- tcp_offset_from_box_top_m：TCP相对箱体顶面中心的偏置，以原始箱体坐标表达。
+- initial_joints_rad：六关节初始角度，单位弧度。
+- fixed_obstacles：工作台、支架等障碍，每项含id、size米单位、pose四阶变换。
+- pallet_thickness_m：托盘厚度，碰撞体自动放在装箱底面下方。
+- approach_distance_m：最终接近/撤离距离。
+- path_budget_seconds、sequence_budget_seconds：搜索预算。
+
+结果含义：
+- verified：在当前模型、参数及离散检查精度下找到全部操作路径。
+- rejected：指定状态或携箱状态存在明确碰撞等约束冲突。
+- unverified：预算内没找到IK或路径，不等于已证明不可达。
+- hardware_verified始终为false；不连接、不控制真实机械臂。
+- robot_diagnostics.motion_verification包含各阶段轨迹和代价，供后续显示界面读取。
+- 多托盘各自呈现在同一工位，完成一盘后重置到配置的初始构型；不规划托盘切换操作。
+
+实现边界：
+- 关节路径按有限步长检查，尚未提供精确连续碰撞证明；网格凸包可能保守拒绝。
+- 笛卡尔接近按5mm路点检查，关节边按配置分辨率检查。
+- 时间为受模型速度和配置加速度约束的保守三次插值估计，不代表真实控制器作业时间。
+- 不建模吸附失效、载荷动力学、软管电缆及实机跟踪误差。
+- 保留原始模型与配置；原资料home值略超URDF上限，kinematics.yaml末端名称也需核对。
+- 当前后端显式用cup_link和合法关节值，不直接使用不一致的原ROS命名设置。
+
+原始模型来源：用户提供的“庾家豪毕设.zip”。robot_models保留其资源。

@@ -1,0 +1,30 @@
+planning_plugin: ompl_interface/OMPLPlanner
+
+request_adapters: >-
+  default_planner_request_adapters/AddTimeOptimalParameterization
+  default_planner_request_adapters/FixWorkspaceBounds
+  default_planner_request_adapters/FixStartStateBounds
+  default_planner_request_adapters/FixStartStateCollision
+  default_planner_request_adapters/FixStartStatePathConstraints
+
+start_state_max_bounds_error: 0.1
+
+longest_valid_segment_fraction: 0.002
+
+planning_time: 0.8
+
+# 速度缩放（推荐你用 0.3 ~ 0.5，稳定不冲）
+max_velocity_scaling_factor: 0.3
+max_acceleration_scaling_factor: 0.2
+
+# 规划算法
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.08  # 增大一点，路径更直、点更少
+    goal_bias: 0.15
+
+arm_group:
+  planner_configs:
+    - RRTConnectkConfigDefault
+  projection_evaluator: joints(shoulder_pan_joint,shoulder_lift_joint)

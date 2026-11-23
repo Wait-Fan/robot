@@ -1,0 +1,13 @@
+{
+  "validated_on": "2026-11-03",
+  "target": "E:\\范卓燃\\码垛算法\\文件\\装箱算法\\复现ananno2025算法\\ananno_phase2_reproduction",
+  "tests_passed": 125,
+  "target_cli_boxes_packed": 9,
+  "target_cli_open_direction": "-X",
+  "original_2024_unchanged_files": 99,
+  "original_2024_verification": "tools/capture_baseline_2024.py SOURCE --verify",
+  "ik_verified": false,
+  "joint_trajectory_verified": false,
+  "full_paper_replication_verified": false,
+  "target_files_backed_up_before_change": true
+}

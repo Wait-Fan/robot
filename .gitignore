@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.venv/
+output/*.png
+output/*.csv
+output/*.txt
+
+# Local runtime, generated results and historical backups
+/robot_runtime/
+/output/
+/backup*/
+.venv/
+venv/
+.pytest_cache/
+*.log
+
+# Local raw datasets and duplicate archives
+/data/
+/data.zip
+/provenance/baseline_2024_source.zip
+
+# Local credentials and machine files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+Thumbs.db
+Desktop.ini
+/examples/imported/*.json

@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="robot_ec66">
+
+  <!-- ===================== 机械臂本体（完全不变，100%保留你原来的参数） ===================== -->
+  <link name="base_link">
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/base_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/base_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="shoulder_link">
+    <inertial>
+      <origin xyz="-3.972297370082E-06 -0.00790612657560721 0.00152727314593366" rpy="0 0 0" />
+      <mass value="1.75215257304071" />
+      <inertia ixx="0.00461795097434262" ixy="-8.0190388976997E-08" ixz="5.67530150749476E-07"
+               iyy="0.00427218389560493" iyz="4.04234832072505E-05" izz="0.00358435944556083" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/shoulder_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.6 0.6 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/shoulder_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_pan_joint" type="revolute">
+    <origin xyz="0 0 0.096" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="shoulder_link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-3.14" upper="3.14" effort="80" velocity="1.57" />
+  </joint>
+
+  <link name="upper_arm_link">
+    <inertial>
+      <origin xyz="1.93650531746665E-06 0.177888129133798 0.000935832400226377" rpy="0 0 0" />
+      <mass value="4.86499591432479" />
+      <inertia ixx="0.0243235352306797" ixy="-8.02884544949512E-08" ixz="-3.65963122823591E-07"
+               iyy="0.00864801682600579" iyz="-2.33903102660761E-05" izz="0.0226889312195205" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/upper_arm_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.6 0.6 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/upper_arm_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_lift_joint" type="revolute">
+    <origin xyz="0 -0.138 0" rpy="1.5708 0 0" />
+    <parent link="shoulder_link" />
+    <child link="upper_arm_link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-1.571" upper="1.571" effort="100" velocity="1.57" />
+  </joint>
+
+  <link name="forearm_link">
+    <inertial>
+      <origin xyz="9.23340816444273E-06 -0.201658967810949 -0.00367509696967195" rpy="0 0 0" />
+      <mass value="2.17161619202764" />
+      <inertia ixx="0.00964556191756371" ixy="-5.11889508690998E-09" ixz="-2.58598566224402E-07"
+               iyy="0.00185513255909822" iyz="0.000129119397021428" izz="0.00937803528134213" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/forearm_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.6 0.6 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/forearm_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="forearm_joint" type="revolute">
+    <origin xyz="0 0.418 -0.114" rpy="3.1416 0 0" />
+    <parent link="upper_arm_link" />
+    <child link="forearm_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.793" upper="2.793" effort="80" velocity="1.57" />
+  </joint>
+
+  <link name="wrist_1_link">
+    <inertial>
+      <origin xyz="-3.93198295295633E-06 -0.0921874562989627 -0.00191999212439375" rpy="0 0 0" />
+      <mass value="0.545719097710208" />
+      <inertia ixx="0.000714555359060343" ixy="-2.62621144574288E-09" ixz="-1.0415231865486E-07"
+               iyy="0.000653673708361221" iyz="3.55735130398696E-06" izz="0.000472396316900323" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_1_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.8 0.8 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_1_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_1_joint" type="revolute">
+    <origin xyz="0 -0.398 0" rpy="1.5708 0 0" />
+    <parent link="forearm_link" />
+    <child link="wrist_1_link" />
+    <axis xyz="0 -1 0" />
+    <limit lower="-3.142" upper="3.142" effort="50" velocity="2.094" />
+  </joint>
+
+  <link name="wrist_2_link">
+    <inertial>
+      <origin xyz="3.93197713251883E-06 0.0921874563110145 -0.00191999210448493" rpy="0 0 0" />
+      <mass value="0.545719097440401" />
+      <inertia ixx="0.000714555358428222" ixy="-2.62630519276578E-09" ixz="1.04152182936881E-07"
+               iyy="0.000653673707896956" iyz="-3.55735101686746E-06" izz="0.000472396316900323" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_2_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="0.8 0.8 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_2_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_2_joint" type="revolute">
+    <origin xyz="0 -0.098 0" rpy="1.5708 0 0" />
+    <parent link="wrist_1_link" />
+    <child link="wrist_2_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.571" upper="1.571" effort="50" velocity="2.094" />
+  </joint>
+
+  <link name="wrist_3_link">
+    <inertial>
+      <origin xyz="3.43500555402778E-08 0.067830997521605 2.61060745936348E-05" rpy="0 0 0" />
+      <mass value="0.164877952477342" />
+      <inertia ixx="7.7866060664995E-05" ixy="8.16091171835157E-11" ixz="7.91937125052819E-10"
+               iyy="0.000117441276807575" iyz="-7.83174107051918E-08" izz="7.75733621912535E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_3_link.stl" />
+      </geometry>
+      <material name="">
+        <color rgba="1.0 0.2 0.2 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/wrist_3_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_3_joint" type="revolute">
+    <origin xyz="0 0.098 0" rpy="1.5708 0 0" />
+    <parent link="wrist_2_link" />
+    <child link="wrist_3_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-6.283" upper="6.283" effort="30" velocity="3.142" />
+  </joint>
+
+  <!-- ===================== 吸盘部分（核心修复：link_base+cup_link中心对称+位置100%正确） ===================== -->
+  <link name="link_base">
+    <inertial>
+      <origin xyz="-5.76207681182315E-16 6.66133814775094E-16 -0.0250000000000002" rpy="0 0 0" />
+      <mass value="0.098174770424681" />
+      <inertia ixx="3.5792885050665E-05" ixy="-1.51709481005838E-36" ixz="4.60603334714609E-22"
+               iyy="3.5792885050665E-05" iyz="-6.06271088687215E-21" izz="3.06796157577128E-05" />
+    </inertial>
+    <visual>
+      <!-- 核心修复1：link_base中心对称修复，和cup_link完全一致的改法 -->
+      <origin xyz="0 0 0" rpy="3.1416 0 3.1416" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/link_base.stl" />
+      </geometry>
+      <material name="link_base_mat">
+        <color rgba="1 1 1 1" /> 
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="3.1416 0 3.1416" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/link_base.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- 完全用你SW导出的原始j7关节，不做任何修改 -->
+  <joint name="j7" type="fixed">
+    <origin xyz="0 0.089 0" rpy="1.5708 0 0" />
+    <parent link="wrist_3_link" />
+    <child link="link_base" />
+    <axis xyz="0 0 0" />
+  </joint>
+
+  <link name="cup_link">
+    <inertial>
+      <origin xyz="3.57421983766674E-05 0.000439440635704447 0.0170415851932638" rpy="0 0 0" />
+      <mass value="0.153205468110546" />
+      <inertia ixx="0.00012615591813755" ixy="2.34978035393046E-09" ixz="-1.18902892816163E-07"
+               iyy="0.000125744916073752" iyz="-2.61800372514106E-06" izz="0.000175916091366397" />
+    </inertial>
+    <visual>
+      <!-- 核心修复2：cup_link恢复正确中心对称+位置，完美贴合link_base -->
+      <origin xyz="0 0 0" rpy="3.1416 0 3.1416" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/cup_link.stl" />
+      </geometry>
+      <material name="cup_link_mat">
+        <color rgba="0 1 0 1" /> <!-- 绿色，区分link_base -->
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="3.1416 0 3.1416" />
+      <geometry>
+        <mesh filename="package://robot_ec66/meshes/cup_link.stl" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- 完全用你SW导出的原始tool0关节，不做任何修改 -->
+  <joint name="tool0" type="fixed">
+    <origin xyz="0 0 -0.1085" rpy="0 0 0" />
+    <parent link="link_base" />
+    <child link="cup_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+
+</robot>
+

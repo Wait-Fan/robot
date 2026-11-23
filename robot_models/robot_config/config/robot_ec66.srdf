@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="robot_ec66">
+
+    <group name="arm_group">
+        <chain base_link="base_link" tip_link="cup_link"/>
+    </group>
+
+    <!-- 机械臂 HOME 姿态 -->
+<!-- 机械臂 HOME 姿态（对应图1的抓取位姿） -->
+<group_state name="home" group="arm_group">
+    <joint name="shoulder_pan_joint" value="3.1416"/>   <!-- 180° -->
+    <joint name="shoulder_lift_joint" value="0.0"/>  <!-- 0° -->
+    <joint name="forearm_joint" value="2.5307"/>        <!-- 145° -->
+    <joint name="wrist_1_joint" value="-0.6109"/>      <!-- -35° -->
+    <joint name="wrist_2_joint" value="-1.5708"/>      <!-- -90° -->
+    <joint name="wrist_3_joint" value="0.0"/>      <!-- -84° -->
+</group_state>
+
+<!-- 相机观测位姿：0° 0° -45° 0° 0° 0° -->
+<group_state name="camera" group="arm_group">
+    <joint name="shoulder_pan_joint" value="0.0"/>     <!-- 0° -->
+    <joint name="shoulder_lift_joint" value="0.0"/>    <!-- 0° -->
+    <joint name="forearm_joint" value="-0.7854"/>       <!-- -45° -->
+    <joint name="wrist_1_joint" value="0.0"/>           <!-- 0° -->
+    <joint name="wrist_2_joint" value="0.0"/>          <!-- 0° -->
+    <joint name="wrist_3_joint" value="0.0"/>          <!-- 0° -->
+</group_state>
+
+
+    <!-- 自动禁用碰撞（已包含吸盘 link_base + cup_link）-->
+    <disable_collisions link1="base_link" link2="shoulder_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="upper_arm_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="wrist_1_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="wrist_3_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="base_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="forearm_link" link2="shoulder_link" reason="Never"/>
+    <disable_collisions link1="forearm_link" link2="upper_arm_link" reason="Adjacent"/>
+    <disable_collisions link1="forearm_link" link2="wrist_1_link" reason="Adjacent"/>
+    <disable_collisions link1="forearm_link" link2="wrist_2_link" reason="Never"/>
+    <disable_collisions link1="forearm_link" link2="wrist_3_link" reason="Never"/>
+    <disable_collisions link1="forearm_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="forearm_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="shoulder_link" link2="upper_arm_link" reason="Adjacent"/>
+    <disable_collisions link1="shoulder_link" link2="wrist_1_link" reason="Never"/>
+    <disable_collisions link1="shoulder_link" link2="wrist_3_link" reason="Never"/>
+    <disable_collisions link1="shoulder_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="shoulder_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="upper_arm_link" link2="wrist_1_link" reason="Never"/>
+    <disable_collisions link1="upper_arm_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="upper_arm_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="wrist_1_link" link2="wrist_2_link" reason="Adjacent"/>
+    <disable_collisions link1="wrist_1_link" link2="wrist_3_link" reason="Never"/>
+    <disable_collisions link1="wrist_1_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="wrist_1_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="wrist_2_link" link2="wrist_3_link" reason="Adjacent"/>
+    <disable_collisions link1="wrist_2_link" link2="link_base" reason="Never"/>
+    <disable_collisions link1="wrist_2_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="wrist_3_link" link2="link_base" reason="Adjacent"/>
+    <disable_collisions link1="wrist_3_link" link2="cup_link" reason="Never"/>
+
+    <disable_collisions link1="link_base" link2="cup_link" reason="Adjacent"/>
+
+</robot>
+

@@ -1,0 +1,6 @@
+{
+  "pallet_weight": 25.0,
+  "com_deviation_fraction": 0.25,
+  "corner_inset_fraction": 0.01,
+  "seed": 42
+}

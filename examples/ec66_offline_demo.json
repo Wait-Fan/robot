@@ -1,0 +1,21 @@
+{
+  "pallet": {
+    "length": 25,
+    "width": 10,
+    "height": 10
+  },
+  "boxes": [
+    {
+      "id": "A",
+      "length": 10,
+      "width": 10,
+      "height": 10
+    },
+    {
+      "id": "B",
+      "length": 10,
+      "width": 10,
+      "height": 10
+    }
+  ]
+}

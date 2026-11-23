@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "2025开放方向小样例（初步模型）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "args": ["--algorithm", "robot2025", "--open-direction=-X", "--input-json", "examples/paper_two_phase.json", "--no-show"],
+      "env": {"PYTHONPATH": "${workspaceFolder}/src"}
+    },
+    {
+      "name": "论文两阶段小样例（需DEAP）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "args": ["--algorithm", "paper", "--input-json", "examples/paper_two_phase.json",
+               "--paper-config", "examples/paper_config.json", "--output-json", "output/paper_plan.json",
+               "--output-csv", "output/paper_positions.csv", "--save-plot", "output/paper.png", "--no-show"],
+      "env": {"PYTHONPATH": "${workspaceFolder}/src"}
+    },
+    {
+      "name": "打开2025 PyQt5工作台（默认2025模式）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "env": {"PYTHONPATH": "${workspaceFolder}/src"}
+    },
+    {
+      "name": "运行阶段性复现示例",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "args": [
+        "--input", "examples/boxes.csv",
+        "--pallet", "12", "10", "10",
+        "--output-csv", "output/demo_placements.csv",
+        "--save-plot", "output/demo_packing.png"
+      ],
+      "env": {"PYTHONPATH": "${workspaceFolder}/src"}
+    }
+  ]
+}

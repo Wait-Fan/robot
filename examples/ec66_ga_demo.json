@@ -1,0 +1,8 @@
+{
+  "population_size": 4,
+  "mu": 4,
+  "lambda_": 4,
+  "generations": 2,
+  "max_stagnation": 2,
+  "max_pallets": 2
+}
