@@ -16,4 +16,8 @@ def planning_options(config):
     tiered=config.get('tiered_validation',True)
     if not isinstance(tiered,bool):raise ValueError('分层验证开关必须为布尔值')
     result.update(full_validation_batch_size=batch,tiered_validation=tiered)
+    retries=config.get('local_motion_retries',2)
+    if isinstance(retries,bool) or not isinstance(retries,int) or not 0<=retries<=5:
+        raise ValueError('单段局部重试次数必须为0至5的整数')
+    result['local_motion_retries']=retries
     return result

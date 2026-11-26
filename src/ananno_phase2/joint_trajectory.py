@@ -7,6 +7,11 @@ import math
 import numpy as np
 
 
+class TrajectoryValidationError(ValueError):
+    def __init__(self,message,details):
+        super().__init__(message);self.details=details
+
+
 def _coefficients(left,right):
     duration=float(right['time_from_start']-left['time_from_start'])
     q0,q1=np.asarray(left['positions']),np.asarray(right['positions']);dq=q1-q0
@@ -42,7 +47,7 @@ def _extrema(coefficients,derivative_order):
 
 
 def smooth_trajectory(path,velocity,acceleration,valid,*,lower,upper,resolution=.035,
-                      shortcut=True,cancelled=None,segment_valid=None):
+                      shortcut=True,cancelled=None,segment_valid=None,diagnostics=None):
     path=np.asarray(path,dtype=float);velocity=np.asarray(velocity,dtype=float);acceleration=np.asarray(acceleration,dtype=float)
     lower,upper=np.asarray(lower),np.asarray(upper)
     if path.ndim!=2 or len(path)<2 or path.shape[1:]!=velocity.shape or velocity.shape!=acceleration.shape or lower.shape!=velocity.shape or upper.shape!=velocity.shape:
@@ -57,54 +62,72 @@ def smooth_trajectory(path,velocity,acceleration,valid,*,lower,upper,resolution=
     def edge(a,b):
         count=max(1,int(math.ceil(np.max(np.abs(b-a))/resolution)))
         return all(state(a+(b-a)*i/count) for i in range(count+1))
-    if not all(state(q) for q in path):raise ValueError('Trajectory waypoint in collision or outside joint limits')
+    details={'failures':[],'fallback_used':False,'path_source':'original'}
+    def fail(category,**data):
+        details['failures'].append(dict(category=category,**data))
+    for q in path:
+        if not state(q):
+            fail('joint_limit' if np.any(q<lower) or np.any(q>upper) else 'collision',stage='waypoint',joints=q.tolist())
+            raise TrajectoryValidationError('Trajectory waypoint in collision or outside joint limits',details)
     # Remove exact duplicates without introducing a jump.
     path=path[np.r_[True,np.max(np.abs(np.diff(path,axis=0)),axis=1)>1e-12]]
     if len(path)==1:path=np.vstack([path,path])
+    original=path.copy();variants=[]
     if shortcut and len(path)>2:
         reduced=[path[0]];index=0
         while index<len(path)-1:
             check();last=len(path)-1
             candidates=sorted(set([index+1,last]+np.linspace(index+1,last,min(10,last-index),dtype=int).tolist()),reverse=True)
             target=next((j for j in candidates if edge(path[index],path[j])),None)
-            if target is None:raise ValueError('Trajectory edge in collision')
+            if target is None:
+                fail('collision',stage='shortcut_edge');reduced=None;break
             reduced.append(path[target]);index=target
-        path=np.asarray(reduced)
-    delta=np.diff(path,axis=0)
-    durations=np.maximum(.01,np.maximum(np.max(1.9*np.abs(delta)/velocity,axis=1),np.sqrt(np.max(6*np.abs(delta)/acceleration,axis=1))))
-    for blend in (1.,.5,.25,0.):
-        check();speeds=np.zeros_like(path)
-        secants=delta/durations[:,None]
-        for i in range(1,len(path)-1):
-            same=secants[i-1]*secants[i]>0
-            speeds[i,same]=blend*2/(1/secants[i-1,same]+1/secants[i,same])
-        points=[];elapsed=0.
-        for i,q in enumerate(path):
-            points.append({'time_from_start':float(elapsed),'positions':q.tolist(),'velocities':speeds[i].tolist(),'accelerations':np.zeros_like(q).tolist()})
-            if i<len(durations):elapsed+=durations[i]
-        # Exact polynomial derivative extrema set a uniform time stretch. This
-        # preserves each geometric curve and C2 knot continuity.
-        stretch=1.
-        for left,right in zip(points,points[1:]):
-            coefficients,duration=_coefficients(left,right)
-            vlo,vhi=_extrema(coefficients,1);alo,ahi=_extrema(coefficients,2)
-            stretch=max(stretch,float(np.max(np.maximum(abs(vlo),abs(vhi))/duration/velocity)),
-                        float(np.sqrt(np.max(np.maximum(abs(alo),abs(ahi))/duration**2/acceleration))))
-        stretch*=1.000001
-        for point in points:
-            point['time_from_start']*=stretch
-            point['velocities']=(np.asarray(point['velocities'])/stretch).tolist()
-        clear=True
-        for left,right in zip(points,points[1:]):
-            coefficients,_=_coefficients(left,right)
-            qlow,qhigh=_extrema(coefficients,0)
-            if np.any(qlow<lower-1e-10) or np.any(qhigh>upper+1e-10):clear=False;break
-            vlo,vhi=_extrema(coefficients,1)
-            count=max(2,int(math.ceil(np.max(np.maximum(abs(vlo),abs(vhi)))/resolution)))
-            for u in np.linspace(0,1,count+1):
-                q=evaluate_segment(left,right,u)[0]
-                if not state(q) or (segment_valid is not None and not segment_valid(q,np.asarray(left['positions']),np.asarray(right['positions']))):
-                    clear=False;break
-            if not clear:break
-        if clear:return points
-    raise ValueError('No collision-free smoothed trajectory within joint/Cartesian limits')
+        if reduced is not None and len(reduced)<len(original):variants.append(('shortcut',np.asarray(reduced)))
+    variants.append(('original',original))
+    for source,path in variants:
+        delta=np.diff(path,axis=0)
+        durations=np.maximum(.01,np.maximum(np.max(1.9*np.abs(delta)/velocity,axis=1),np.sqrt(np.max(6*np.abs(delta)/acceleration,axis=1))))
+        for blend in (1.,.5,.25,0.):
+            check();speeds=np.zeros_like(path)
+            secants=delta/durations[:,None]
+            for i in range(1,len(path)-1):
+                same=secants[i-1]*secants[i]>0
+                speeds[i,same]=blend*2/(1/secants[i-1,same]+1/secants[i,same])
+            points=[];elapsed=0.
+            for i,q in enumerate(path):
+                points.append({'time_from_start':float(elapsed),'positions':q.tolist(),'velocities':speeds[i].tolist(),'accelerations':np.zeros_like(q).tolist()})
+                if i<len(durations):elapsed+=durations[i]
+            # Exact polynomial derivative extrema set a uniform time stretch. This
+            # preserves each geometric curve and C2 knot continuity.
+            stretch=1.
+            for left,right in zip(points,points[1:]):
+                coefficients,duration=_coefficients(left,right)
+                vlo,vhi=_extrema(coefficients,1);alo,ahi=_extrema(coefficients,2)
+                stretch=max(stretch,float(np.max(np.maximum(abs(vlo),abs(vhi))/duration/velocity)),
+                            float(np.sqrt(np.max(np.maximum(abs(alo),abs(ahi))/duration**2/acceleration))))
+            stretch*=1.000001
+            for point in points:
+                point['time_from_start']*=stretch
+                point['velocities']=(np.asarray(point['velocities'])/stretch).tolist()
+            clear=True
+            for left,right in zip(points,points[1:]):
+                coefficients,_=_coefficients(left,right)
+                qlow,qhigh=_extrema(coefficients,0)
+                if np.any(qlow<lower-1e-10) or np.any(qhigh>upper+1e-10):
+                    fail('joint_limit',path_source=source,blend=blend);clear=False;break
+                vlo,vhi=_extrema(coefficients,1)
+                count=max(2,int(math.ceil(np.max(np.maximum(abs(vlo),abs(vhi)))/resolution)))
+                for u in np.linspace(0,1,count+1):
+                    q=evaluate_segment(left,right,u)[0]
+                    if not state(q):
+                        fail('collision',path_source=source,blend=blend,joints=q.tolist());clear=False;break
+                    if segment_valid is not None and not segment_valid(q,np.asarray(left['positions']),np.asarray(right['positions'])):
+                        fail('cartesian_corridor',path_source=source,blend=blend,joints=q.tolist());clear=False;break
+                if not clear:break
+            if clear:
+                details.update(path_source=source,fallback_used=source=='original' and bool(details['failures']),blend=blend,
+                               original_knots=len(original),output_knots=len(points))
+                if diagnostics is not None:diagnostics.update(details)
+                return points
+    if diagnostics is not None:diagnostics.update(details)
+    raise TrajectoryValidationError('No collision-free smoothed trajectory within joint/Cartesian limits',details)

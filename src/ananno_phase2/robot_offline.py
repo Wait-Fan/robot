@@ -14,7 +14,8 @@ from .robot_profiles import identify_robot
 from .robot_validation_settings import planning_options
 from .robot_grasp import placement_grasp,verifier_grasp_config
 from .robot_motion import motion_options,preplace_pose
-from .joint_trajectory import smooth_trajectory,evaluate_segment
+from .joint_trajectory import smooth_trajectory,evaluate_segment,TrajectoryValidationError
+from .pallet_coordinates import INTERNAL_FRAME
 
 class _BoxBudgetExpired(Exception):pass
 
@@ -83,26 +84,58 @@ class OfflineRobotVerifier:
         return canonical
 
     def _move(self,start,target,*,linear=False,cancelled=None):
+        attempt=getattr(self,'_active_motion_attempt',{})
+        number=attempt.get('number',0);random_seed=number+1
+        details={'attempt':number+1,'random_seed':random_seed,'collision_pairs':[]}
+        self._motion_details=details
+        def valid(q):
+            passed=self.robot.valid(q)
+            if not passed:
+                for pair in getattr(self.robot,'last_collision_pairs',[]):
+                    if pair not in details['collision_pairs'] and len(details['collision_pairs'])<8:details['collision_pairs'].append(pair)
+            return passed
         deadline=time.monotonic()+self.path_seconds
         if cancelled is not None and cancelled():raise InterruptedError("Robot planning cancelled")
-        if not self.robot.valid(start):return None,'motion_start_state_in_collision'
+        if not valid(start):return None,'motion_start_state_in_collision'
         if not linear:
             remaining=deadline-time.monotonic()
             if remaining<=0:return None,'path_budget_exhausted'
-            goal=self.robot.ik(target,start,seconds=remaining)
+            ik_seed=np.asarray(start).copy()
+            if number:
+                ik_seed=np.clip(ik_seed+np.random.default_rng(random_seed).normal(0,.65,len(ik_seed)),self.robot.lower,self.robot.upper)
+            goal=self.robot.ik(target,ik_seed,seconds=max(.001,remaining*.45),random_seed=random_seed,
+                exclude_solutions=copy.deepcopy(attempt.get('goals',())),cancelled=cancelled)
+            details['ik']=copy.deepcopy(getattr(self.robot,'last_ik_diagnostics',{'status':'not_reported'}))
             if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
             remaining=deadline-time.monotonic()
             if remaining<=0:return None,'path_budget_exhausted'
-            if goal is None:return None,'ik_search_failed_or_colliding'
-            path=rrt_connect(start,goal,self.robot.lower,self.robot.upper,self.robot.valid,
-                seconds=remaining,resolution=self.resolution,seed=1,cancelled=cancelled)
-            return path,'path_budget_exhausted' if path is None else ''
+            # A target may have only one collision-free IK branch. Searching
+            # for another branch must not suppress new RRT seeds on that one.
+            if goal is None:
+                previous_goals=attempt.get('goals',())
+                if previous_goals:
+                    offset=(number-1)%len(previous_goals)
+                    for previous_goal in list(previous_goals)[offset:]+list(previous_goals)[:offset]:
+                        if valid(previous_goal):
+                            goal=np.asarray(previous_goal).copy();details['goal_source']='retained_verified_ik_branch';break
+            if goal is None:
+                return None,{'converged_in_collision':'ik_converged_in_collision','budget_exhausted':'ik_budget_exhausted',
+                    'alternative_branch_not_found':'ik_alternative_branch_not_found'}.get(details['ik']['status'],'ik_search_exhausted')
+            details.setdefault('goal_source','new_ik_search')
+            if 'goals' in attempt and not any(np.allclose(goal,q,rtol=0,atol=1e-8) for q in attempt['goals']):
+                attempt['goals'].append(np.asarray(goal).tolist())
+            rrt_details={}
+            path=rrt_connect(start,goal,self.robot.lower,self.robot.upper,valid,
+                seconds=remaining,resolution=self.resolution,seed=random_seed,cancelled=cancelled,diagnostics=rrt_details)
+            details['rrt']=rrt_details
+            return path,('path_budget_exhausted' if rrt_details.get('status')=='budget_exhausted' else 'rrt_search_exhausted') if path is None else ''
         # Cartesian final approach is checked waypoint by waypoint, including joint edges.
         origin=self.robot.fk(start)
         rotvec=_rotvec(target[:3,:3]@origin[:3,:3].T);angle=float(np.linalg.norm(rotvec))
         axis=rotvec/angle if angle>1e-12 else np.zeros(3)
         cross=np.array([[0,-axis[2],axis[1]],[axis[2],0,-axis[0]],[-axis[1],axis[0],0]])
-        count=max(2,int(math.ceil(np.linalg.norm(target[:3,3]-origin[:3,3])/.005)),int(math.ceil(angle/.05)))
+        refinement=number+1
+        count=max(2,int(math.ceil(np.linalg.norm(target[:3,3]-origin[:3,3])/.005*refinement)),int(math.ceil(angle/.05*refinement)))
         path=[list(start)]
         for i in range(1,count+1):
             if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
@@ -111,17 +144,20 @@ class OfflineRobotVerifier:
             pose[:3,3]=origin[:3,3]+(target[:3,3]-origin[:3,3])*fraction
             theta=angle*fraction
             pose[:3,:3]=(np.eye(3)+math.sin(theta)*cross+(1-math.cos(theta))*(cross@cross))@origin[:3,:3]
-            q=self.robot.ik(pose,path[-1],restarts=0,seconds=max(.001,deadline-time.monotonic()))
-            if q is None:return None,'cartesian_ik_search_failed'
+            q=self.robot.ik(pose,path[-1],restarts=0,seconds=max(.001,deadline-time.monotonic()),random_seed=random_seed,cancelled=cancelled)
+            if q is None:
+                details['ik']=copy.deepcopy(getattr(self.robot,'last_ik_diagnostics',{}));details['cartesian_waypoint']=i
+                return None,'cartesian_ik_search_failed'
             a=np.asarray(path[-1]);n=max(1,int(math.ceil(np.max(np.abs(q-a))/self.resolution)))
             for t in range(1,n+1):
                 if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
                 if time.monotonic()>=deadline:return None,'cartesian_approach_budget_exhausted'
-                if not self.robot.valid(a+(q-a)*t/n):return None,'cartesian_joint_edge_collision'
+                if not valid(a+(q-a)*t/n):return None,'cartesian_joint_edge_collision'
             path.append(q.tolist())
         return path,''
 
     def _timed(self,path,*,linear=False,cancelled=None):
+        self._timing_details={}
         def cartesian_corridor(q,a,b):
             left,right,pose=self.robot.fk(a),self.robot.fk(b),self.robot.fk(q)
             delta=right[:3,3]-left[:3,3];length=float(delta@delta)
@@ -133,11 +169,79 @@ class OfflineRobotVerifier:
         return smooth_trajectory(path,self.robot.velocity,self.acceleration,self.robot.valid,
             lower=getattr(self.robot,'lower',np.full(6,-np.inf)),upper=getattr(self.robot,'upper',np.full(6,np.inf)),
             resolution=self.resolution,shortcut=not linear,cancelled=cancelled,
-            segment_valid=cartesian_corridor if linear else None)
+            segment_valid=cartesian_corridor if linear else None,diagnostics=self._timing_details)
+
+    def _plan_stage(self,start,target,*,linear=False,cancelled=None):
+        """Retry only this operation; keep the same start, scene and attachment."""
+        retries=planning_options(self.config)['local_motion_retries'];attempts=[];goals=[]
+        previous=getattr(self,'_active_motion_attempt',None)
+        try:
+            for number in range(retries+1):
+                if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
+                self._active_motion_attempt={'number':number,'goals':goals}
+                self._motion_details={};self._timing_details={};began=time.monotonic()
+                trajectory=None;curve_details={};path=None
+                try:
+                    path,reason=self._move(start,target,linear=linear,cancelled=cancelled)
+                    if path is not None:
+                        try:trajectory=self._timed(path,linear=linear,cancelled=cancelled)
+                        except TrajectoryValidationError as exc:
+                            reason='trajectory_smoothing_failed:'+str(exc);curve_details=exc.details
+                        except ValueError as exc:reason='trajectory_smoothing_failed:'+str(exc)
+                except _BoxBudgetExpired:reason='box_validation_budget_exhausted'
+                record=dict(attempt=number+1,passed=trajectory is not None,reason=reason,
+                            wall_seconds=time.monotonic()-began,planning=copy.deepcopy(self._motion_details),
+                            smoothing=copy.deepcopy(curve_details or self._timing_details))
+                if trajectory is None and path is not None:record['candidate_path']=copy.deepcopy(path)
+                attempts.append(record)
+                details={'start_joints_rad':np.asarray(start).tolist(),'target_tcp_pose':np.asarray(target).tolist(),
+                         'linear':linear,'attempts':attempts,'original_path':path}
+                self._last_failure_details=details
+                if trajectory is not None:return path,trajectory,'',details
+                callback=getattr(self,'log_callback',None)
+                if callback:
+                    summary={'ik':record['planning'].get('ik',{}).get('status'),
+                        'rrt':record['planning'].get('rrt',{}).get('status'),
+                        'collision_pairs':record['planning'].get('collision_pairs',[]),
+                        'curve_failures':list(dict.fromkeys(f['category'] for f in record['smoothing'].get('failures',[])))}
+                    callback(f'机器人局部重试：第 {number+1}/{retries+1} 次未通过；原因 {reason}；摘要 '+json.dumps(summary,ensure_ascii=False))
+                if reason in ('motion_start_state_in_collision','box_validation_budget_exhausted'):break
+            return None,None,reason,details
+        finally:
+            if previous is None:self.__dict__.pop('_active_motion_attempt',None)
+            else:self._active_motion_attempt=previous
 
     def verify(self,placements,pallet,approach,*,cancelled=None):
         from .robot_verification_cache import verify_pallets
         return verify_pallets(self,placements,pallet,approach,cancelled=cancelled)
+
+    def save_verified_pallet(self,key,placements,report):
+        directory=getattr(self,'diagnostics_dir',None)
+        if directory is None:return
+        if not report.get('passed'):raise ValueError('Cannot checkpoint an unverified pallet')
+        directory=Path(directory)/'robot_verified_pallets';directory.mkdir(parents=True,exist_ok=True)
+        path=directory/(key+'.json')
+        if not path.exists():
+            payload={'schema_version':1,'status':'verified_independent_pallet','packing_completed':False,
+                'coordinate_frame':INTERNAL_FRAME,'direction_coordinate_frame':INTERNAL_FRAME,
+                'context_cache_key':key,'model_parameters_sha256':self.model_fingerprint,
+                'placements':[{'box_id':p.box.id,'position':[p.point.x,p.point.y,p.point.z],
+                    'original_size':[p.box.length,p.box.width,p.box.height],'orientation':p.orientation.code,
+                    'oriented_size':[p.orientation.length,p.orientation.width,p.orientation.height],'order':p.order} for p in placements],
+                'motion_verification':report}
+            temporary=path.with_suffix('.json.tmp')
+            temporary.write_text(json.dumps(payload,ensure_ascii=False,indent=2,default=lambda value:value.tolist()),encoding='utf-8');temporary.replace(path)
+        if not hasattr(self,'_verified_pallet_files'):self._verified_pallet_files={}
+        self._verified_pallet_files[key]=str(path.resolve())
+
+    def save_pending_report(self,report):
+        report['verified_pallet_checkpoints']=list(getattr(self,'_verified_pallet_files',{}).values())
+        directory=getattr(self,'diagnostics_dir',None)
+        if directory is None:return
+        directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
+        path=directory/'robot_validation_pending.json';report['diagnostic_file']=str(path.resolve())
+        temporary=path.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps(report,ensure_ascii=False,indent=2,default=lambda value:value.tolist()),encoding='utf-8');temporary.replace(path)
 
     def _verify_sequence(self,placements,pallet,approach,*,cancelled=None):
         if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
@@ -150,7 +254,7 @@ class OfflineRobotVerifier:
             'path_seconds':self.path_seconds,'acceleration':self.acceleration.tolist(),
             'grasp_rotation':self.grasp_rotation.tolist(),'tcp_offset':self.tcp_offset.tolist()},
             sort_keys=True,default=lambda v:v.tolist()).encode()).hexdigest()
-        context=hashlib.sha256((context+'edge_grasp_elevated_prepose_c2_v2'+str(approach.outside_side)).encode()).hexdigest()
+        context=hashlib.sha256((context+'local_recovery_original_path_v3'+str(approach.outside_side)).encode()).hexdigest()
         options=motion_options(self.config);grasp_config=verifier_grasp_config(self)
         signature=(context,pallet.length,pallet.width,pallet.max_height,approach.open_directions,approach.direction_policy,
             tuple((p.box.id,p.box.length,p.box.width,p.box.height,p.pallet_index,p.point.x,p.point.y,p.point.z,p.orientation.code,p.order,p.orientation.length,p.orientation.width,p.orientation.height) for p in ordered))
@@ -170,6 +274,8 @@ class OfflineRobotVerifier:
             if callback:callback(f'机器人验证结果：{status}；箱 {box_id or "全部"}；原因 {reason or "通过当前序列验证"}')
             duration=sum(s['trajectory'][-1]['time_from_start'] for s in stages)
             report={'passed':status=='verified','status':status,'reason':reason,'box_id':box_id,
+                'coordinate_frame':INTERNAL_FRAME,'direction_coordinate_frame':INTERNAL_FRAME,
+                'tcp_pose_coordinate_frame':'robot_base_right_handed',
                 'backend':self.config.get('robot_id','ec66')+'_mujoco_rrt_connect','hardware_verified':False,
                 'robot_id':self.config.get('robot_id','ec66'),'robot_name':self.config.get('robot_name','EC66'),
                 'tool_definition':self.config.get('tool_definition'),'tool_status':self.config.get('tool_status','not_site_calibrated'),
@@ -191,6 +297,7 @@ class OfflineRobotVerifier:
                 'collision_acceleration':'conservative_aabb_then_original_narrowphase',
                 'collision_statistics':dict(getattr(self.robot,'collision_stats',{})),
                 'ik_cache_hits':getattr(self.robot,'ik_cache_hits',0),
+                'local_motion_retries':planning_options(self.config)['local_motion_retries'],
                 'stages':stages,'final_joints_rad':current.tolist(),
                 'assumptions':['No vacuum, payload dynamics or real controller verification',
                     'Each pallet independently starts at the configured robot state',
@@ -199,10 +306,27 @@ class OfflineRobotVerifier:
             if status=='verified':
                 if len(self.cache)>=16:self.cache.pop(next(iter(self.cache)))
                 self.cache[signature]=copy.deepcopy(report)
+            else:
+                complete={d['box_id'] for d in directions_by_box}
+                report['failure_diagnostics']=copy.deepcopy(getattr(self,'_last_failure_details',{}))
+                report['verified_prefix_boxes']=len(complete)
+                report['verified_prefix_stages']=[s for s in stages if s['box_id'] in complete]
+                report['failure_scene']={'fixed_and_pallet_obstacles':environment,'placed_obstacles':placed,
+                    'carrying_box':self.robot.attachment is not None,'current_joints_rad':current.tolist(),
+                    'attachment':({'size_m':self.robot.attachment[0].tolist(),'tcp_T_box':self.robot.attachment[1].tolist()} if self.robot.attachment is not None else None),
+                    'grasp':copy.deepcopy(getattr(self,'_current_grasp',None)),
+                    'pallet':active_pallet+1 if active_pallet is not None else None,
+                    'box_placements':[{'id':q.box.id,'position':[q.point.x,q.point.y,q.point.z],
+                        'original_size':[q.box.length,q.box.width,q.box.height],'orientation':q.orientation.code,
+                        'oriented_size':[q.orientation.length,q.orientation.width,q.orientation.height]} for q in ordered]}
+                self.save_pending_report(report)
+                if callback and report.get('diagnostic_file'):callback('机器人未完成诊断已保存：'+report['diagnostic_file'])
             return report
         def move(name,target,linear=False):
             nonlocal current,failure_operation
             failure_operation=name
+            self._last_failure_details={'start_joints_rad':current.tolist(),'target_tcp_pose':target.tolist(),
+                'linear':linear,'attempts':[],'original_path':None}
             callback=getattr(self,'log_callback',None)
             if callback:callback(f'机器人验证：箱 {box_number}/{len(ordered)}（{p.box.id}），托盘 {p.pallet_index+1}，动作 {name}')
             def box_cancelled():
@@ -211,8 +335,7 @@ class OfflineRobotVerifier:
                 return False
             if time.monotonic()-box_began>=budget:return 'box_validation_budget_exhausted'
             try:
-                path,reason=self._move(current,target,linear=linear,cancelled=box_cancelled)
-                trajectory=self._timed(path,linear=linear,cancelled=box_cancelled) if path is not None else None
+                path,trajectory,reason,planning_details=self._plan_stage(current,target,linear=linear,cancelled=box_cancelled)
             except _BoxBudgetExpired:return 'box_validation_budget_exhausted'
             except ValueError as exc:return 'trajectory_smoothing_failed:'+str(exc)
             if time.monotonic()-box_began>=budget:return 'box_validation_budget_exhausted'
@@ -223,6 +346,7 @@ class OfflineRobotVerifier:
             samples.append(np.asarray(trajectory[-1]['positions']))
             stages.append({'box_id':p.box.id,'pallet':p.pallet_index+1,'operation':name,
                 'trajectory':trajectory,'target_tcp_pose':target.tolist(),
+                'planning_attempts':planning_details['attempts'],
                 'path_mode':'cartesian_linear' if linear else 'joint_rrt_connect',
                 'joint_motion_rad':float(sum(np.sum(np.abs(b-a)) for a,b in zip(samples,samples[1:]))),
                 'tcp_path_length_m':float(sum(np.linalg.norm(self.robot.fk(b)[:3,3]-self.robot.fk(a)[:3,3]) for a,b in zip(samples,samples[1:]))),
@@ -236,6 +360,8 @@ class OfflineRobotVerifier:
                 prefix=hashlib.sha256(repr((context,pallet.length,pallet.width,pallet.max_height,
                     approach.open_directions,approach.direction_policy)).encode()).hexdigest()
             box_began=time.monotonic()
+            self._last_failure_details={}
+            self._current_grasp=None
             placement_key=(p.box.id,p.box.length,p.box.width,p.box.height,p.point.x,p.point.y,p.point.z,
                 p.orientation.code,p.orientation.length,p.orientation.width,p.orientation.height)
             prefix=hashlib.sha256((prefix+repr(placement_key)+repr(current.tolist())).encode()).hexdigest()
@@ -258,6 +384,7 @@ class OfflineRobotVerifier:
             size=np.array([p.box.length,p.box.width,p.box.height])*self.scale
             oriented_size=np.array([p.orientation.length,p.orientation.width,p.orientation.height])*self.scale
             grasp=placement_grasp(p,previous_geometry,grasp_config,outside_side=approach.outside_side)
+            self._current_grasp=grasp
             box_tcp=np.asarray(grasp['box_T_tcp'])
             center=np.eye(4);center[:3,3]=np.array([p.point.x,p.point.y,p.point.z])*self.scale+oriented_size/2
             angle=math.pi/2 if p.orientation.code=='Z90' else 0.

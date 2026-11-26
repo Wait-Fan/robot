@@ -165,30 +165,47 @@ class EC66Model:
 
     def valid(self,q):
         q=np.asarray(q,dtype=float)
+        self.last_collision_pairs=[]
         if q.shape!=(6,) or not np.all(np.isfinite(q)) or np.any(q<self.lower) or np.any(q>self.upper):return False
-        return not self.collisions(q)
+        self.last_collision_pairs=self.collisions(q)
+        return not self.last_collision_pairs
 
-    def ik(self,target,seed,*,check_collision=True,iterations=200,restarts=4,seconds=2.):
+    def ik(self,target,seed,*,check_collision=True,iterations=200,restarts=4,seconds=2.,
+           random_seed=1,exclude_solutions=(),cancelled=None):
         target=pose_matrix(target);seed=np.asarray(seed,dtype=float)
         if seed.shape!=(6,) or not np.all(np.isfinite(seed)):raise ValueError('Invalid IK seed')
-        key=target.tobytes()
+        details={'status':'search_exhausted','converged_colliding':0,'excluded_branches':0,'collision_pairs':[],'random_seed':random_seed}
+        self.last_ik_diagnostics=details
+        excluded=[np.asarray(q,dtype=float) for q in exclude_solutions]
+        if any(q.shape!=(6,) or not np.isfinite(q).all() for q in excluded):raise ValueError('Invalid excluded IK branch')
+        def excluded_branch(q):return any(np.max(np.abs(q-other))<=.15 for other in excluded)
+        def check():
+            if cancelled is not None and cancelled():raise InterruptedError('IK search cancelled')
+        check();key=target.tobytes()
         for solution in self._ik_cache.get(key,[]):
             # Nearby branch reuse only; recheck the current scene and held box.
-            if np.max(np.abs(solution-seed))<=.15 and (not check_collision or self.valid(solution)):
+            if not excluded_branch(solution) and np.max(np.abs(solution-seed))<=.15 and (not check_collision or self.valid(solution)):
+                details.update(status='verified_goal',cache_hit=True)
                 self._ik_cache.move_to_end(key);self.ik_cache_hits+=1;return solution.copy()
-        rng=np.random.default_rng(1);deadline=time.monotonic()+seconds
+        rng=np.random.default_rng(random_seed);deadline=time.monotonic()+seconds
         for attempt in range(restarts+1):
             q=np.clip(seed,self.lower,self.upper) if attempt==0 else rng.uniform(self.lower,self.upper)
             for _ in range(iterations):
-                if time.monotonic()>deadline:return None
+                check()
+                if time.monotonic()>deadline:
+                    details['status']='budget_exhausted';return None
                 current=self.fk(q);ep=target[:3,3]-current[:3,3];er=_rotvec(target[:3,:3]@current[:3,:3].T)
                 if np.linalg.norm(ep)<1e-6 and np.linalg.norm(er)<5e-5:
+                    if excluded_branch(q):details['excluded_branches']+=1;break
                     if not check_collision or self.valid(q):
                         solutions=self._ik_cache.setdefault(key,[])
                         if len(solutions)<4:solutions.append(q.copy())
                         self._ik_cache.move_to_end(key)
                         if len(self._ik_cache)>512:self._ik_cache.popitem(last=False)
-                        return q
+                        details['status']='verified_goal';return q
+                    details['converged_colliding']+=1
+                    for pair in getattr(self,'last_collision_pairs',None) or self.collisions(q):
+                        if pair not in details['collision_pairs'] and len(details['collision_pairs'])<8:details['collision_pairs'].append(pair)
                     break
                 jp=np.zeros((3,self.model.nv));jr=jp.copy()
                 mj.mj_jacBody(self.model,self.data,jp,jr,self.tip_id)
@@ -198,6 +215,8 @@ class EC66Model:
                 length=np.linalg.norm(delta)
                 if length>.2:delta*=.2/length
                 q=np.clip(q+delta,self.lower,self.upper)
+        if details['converged_colliding']:details['status']='converged_in_collision'
+        elif details['excluded_branches']:details['status']='alternative_branch_not_found'
         return None
 
 

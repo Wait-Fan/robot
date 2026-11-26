@@ -16,6 +16,7 @@ from PyQt5 import QtCore as C,QtWidgets as W
 from .qt_workbench import PackingWorkbench,button,label
 from .robot_approach import ApproachConfig,outside_side_from_workcell
 from .models import Pallet
+from .pallet_coordinates import PUBLIC_FRAME,reflected_side
 
 
 class RobotWorkbench(PackingWorkbench):
@@ -113,7 +114,7 @@ class RobotWorkbench(PackingWorkbench):
         try:
             config=json.loads(self.robot_scene_path.read_text(encoding='utf-8-sig'))
             if config.get('pallet_frame_convention')!='long_side_x':raise ValueError('自动里外基准需要长边X工位坐标')
-            return outside_side_from_workcell(Pallet(*map(float,self.dimensions)).with_long_side_x(),config['base_T_pallet'],length_scale_to_m=config['length_scale_to_m'])
+            return reflected_side(outside_side_from_workcell(Pallet(*map(float,self.dimensions)).with_long_side_x(),config['base_T_pallet'],length_scale_to_m=config['length_scale_to_m']))
         except (OSError,KeyError,TypeError,ValueError) as exc:
             if strict:raise ValueError('无法确定里外基准，请重新应用工位或手动指定外侧：'+str(exc)) from exc
             return None
@@ -125,7 +126,7 @@ class RobotWorkbench(PackingWorkbench):
     def _job_options(self):
         if self.mode_combo.currentText()=='2025 可达性':
             options={'algorithm':'robot2025','robot_seal_verified_pallets':self.initial_result_first,'paper_config':self._paper_config(self.paper_parameters),'max_seconds':self.max_job_minutes*60,
-                    'approach_config':ApproachConfig(open_directions=self.approach_directions,outside_side=self._outside_side(strict=True),direction_policy=self.direction_policy)}
+                    'approach_config':ApproachConfig(open_directions=self.approach_directions,outside_side=self._outside_side(strict=True),direction_policy=self.direction_policy,coordinate_frame=PUBLIC_FRAME)}
             if options['approach_config'].outside_side is None:self._log('尚无法自动判断里外：请在工位布局中应用位置，或在设置中手动指定外侧；本次保留原可行顺序。')
             if self.robot_check.isChecked():
                 if self.robot_scene_path is None:raise ValueError('请先配置并应用工位')
@@ -184,16 +185,16 @@ class RobotWorkbench(PackingWorkbench):
     def show_settings(self):
         dialog=W.QDialog(self);dialog.setWindowTitle('2025放置策略 / 装箱设置');dialog.setMinimumSize(600,720);dialog.resize(640,760)
         layout=W.QVBoxLayout(dialog)
-        layout.addWidget(label('X沿托盘长边，Y沿短边，Z向上。勾选允许接近的开放侧，每箱选择可行方向；至少选一项。',wrap=True))
+        layout.addWidget(label('俯视原点在托盘左上角：+X沿长边向右，+Y沿短边向下，+Z向上。勾选允许接近的开放侧；至少选一项。',wrap=True))
         boxes={};group=W.QGroupBox('允许的接近方向');group.setMinimumHeight(190);options=W.QVBoxLayout(group)
-        for direction,title in [('+Z','+Z：上方接近（从上向下）'),('+X','+X：沿长边，从X正端接近'),('-X','-X：沿长边，从X负端接近'),('+Y','+Y：沿短边，从Y正端接近'),('-Y','-Y：沿短边，从Y负端接近')]:
+        for direction,title in [('+Z','+Z：上方接近（从上向下）'),('+X','+X：右边，沿长边从右端接近'),('-X','-X：左边，沿长边从左端接近'),('+Y','+Y：下边，沿短边从下端接近'),('-Y','-Y：上边，沿短边从上端接近')]:
             checkbox=W.QCheckBox(title);checkbox.setMinimumHeight(26);checkbox.setProperty('direction',direction)
             checkbox.setChecked(direction in self.approach_directions);options.addWidget(checkbox);boxes[direction]=checkbox
         layout.addWidget(group)
         layout.addWidget(label('接近策略：X/Y是在较高预放置点的短距离偏移，最后斜下降；+Z为正上方下降。搬运由避障规划器选择路径，比较预算内完整可行候选的预计时间。',wrap=True))
         fill=W.QGroupBox('装箱顺序约束（独立于允许接近方向）');form=W.QFormLayout(fill)
         outside=W.QComboBox();outside.setObjectName('outsideSideSelector')
-        for title,value in [('自动：按工位机械臂所在侧','auto'),('外侧 -X：由+X远侧向-X装','-X'),('外侧 +X：由-X远侧向+X装','+X'),('外侧 -Y：由+Y远侧向-Y装','-Y'),('外侧 +Y：由-Y远侧向+Y装','+Y')]:outside.addItem(title,value)
+        for title,value in [('自动：按工位机械臂所在侧','auto'),('外侧 -X 左边：从右向左装','-X'),('外侧 +X 右边：从左向右装','+X'),('外侧 -Y 上边：从下向上装','-Y'),('外侧 +Y 下边：从上向下装','+Y')]:outside.addItem(title,value)
         outside.setCurrentIndex(outside.findData(self.outside_mode));form.addRow('里外基准',outside)
         form.addRow(label('跨层约束：完整远侧深度区先于近侧区，同时满足下层支撑。两者冲突就淘汰垛型，不放宽成先外后里；深度重叠的跨区大箱优先满足支撑。',wrap=True))
         layout.addWidget(fill)
@@ -216,6 +217,7 @@ class RobotWorkbench(PackingWorkbench):
 
     def display_document(self,document,path=None):
         super().display_document(document,path)
+        document=self.document
         if document.get('robot_diagnostics'):
             self.audit_box.setPlainText(json.dumps({'robot_diagnostics':document['robot_diagnostics'],
                 'provenance':document.get('provenance'),'paper_diagnostics':document.get('paper_diagnostics')},ensure_ascii=False,indent=2))

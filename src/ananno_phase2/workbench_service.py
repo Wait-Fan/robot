@@ -199,6 +199,8 @@ def run_packing_job(dataset, order_id, pallet_length, pallet_width, pallet_heigh
         elif algorithm=="paper":
             from .paper_pipeline import annotate_document
             annotate_document(doc,packer.diagnostics)
+        from .pallet_coordinates import public_document
+        doc=public_document(doc)
         if info["kind"]=="wcs_json":
             doc["input_import"]={"format":"zhuang data[]","source_file":path.name,"included_boxes":len(boxes),
                  "case_type_record_counts":info["case_types"],
@@ -207,7 +209,7 @@ def run_packing_job(dataset, order_id, pallet_length, pallet_width, pallet_heigh
         doc["timing"] = {"algorithm_seconds": algorithm_seconds, "clock": "perf_counter",
                          "scope": "solver_setup_and_packing_including_enabled_robot_verification; excludes_input_and_export"}
         staged["json"].write_text(json.dumps(doc,ensure_ascii=False,indent=2),encoding="utf-8")
-        write_placements_csv(staged["csv"], result)
+        write_placements_csv(staged["csv"], result,public_coordinates=True)
         from .native_scene import save_overview
         save_overview(doc, staged["png"], cancelled=cancelled)
         check_cancelled(cancelled)

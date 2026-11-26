@@ -22,6 +22,21 @@ def transform(xyz=(0,0,0),yaw=0):
 
 
 class WorkcellState:
+    def pallet_public_axes(self):
+        origin=self.pallet_pose[:3,3]+self.pallet_pose[:3,1]*self.dimensions[1]
+        return origin.copy(),self.pallet_pose[:3,:3]@np.diag([1.,-1.,1.])
+
+    def pallet_edit_pose(self):
+        # Editing XYZ is in robot-base coordinates; retain a proper rotation
+        # for the yaw editor while changing its positional reference to P0.
+        pose=self.pallet_pose.copy();pose[:3,3]=self.pallet_public_axes()[0]
+        return pose
+
+    def set_pallet_edit_position(self,xyz):
+        xyz=np.asarray(xyz,dtype=float)
+        if xyz.shape!=(3,) or not np.isfinite(xyz).all():raise ValueError('位置必须为有限三维坐标')
+        self.pallet_pose[:3,3]=xyz-self.pallet_pose[:3,1]*self.dimensions[1]
+
     @classmethod
     def create(cls,project_dir,dimensions_mm=(1200,800,1400),sample_mm=(300,200,200)):
         self=cls();self.root=Path(project_dir).resolve()
@@ -159,6 +174,9 @@ class WorkcellState:
         local_tcp=np.asarray(cfg['box_T_tcp_rotation'],dtype=float).copy()
         local_tcp[:3,3]=np.asarray([0,0,self.sample[2]/2])+cfg['tcp_offset_from_box_top_m']
         cfg['pick_tcp_pose']=(self.source_box_pose()@local_tcp).tolist()
+        from .pallet_coordinates import PUBLIC_FRAME,INTERNAL_FRAME
+        cfg['pallet_public_coordinates']={'frame':PUBLIC_FRAME,'origin_in_robot_base_m':self.pallet_public_axes()[0].tolist(),
+            'base_T_pallet_frame':INTERNAL_FRAME,'description':'base_T_pallet保持右手内部计算坐标，界面P0为俯视左上角'}
         return cfg
 
     def save(self,path):

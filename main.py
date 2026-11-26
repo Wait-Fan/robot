@@ -37,7 +37,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--algorithm",choices=["basic","paper","robot2025"],default="basic",help="基础、2024两阶段、2025开放方向研究实现")
     p.add_argument("--open-direction",choices=["+X","-X","+Y","-Y","+Z"],action="append",help="允许的接近侧，可重复指定多项；默认+Z，负方向使用--open-direction=-X")
     p.add_argument("--direction-policy",choices=["preplace_optimized","side_direct_first","first_feasible"],default="preplace_optimized",help="默认短抬升后避障搬运至较高预放置点，再下降/斜下降；保留旧策略供历史对照")
-    p.add_argument("--outside-side",choices=["auto","+X","-X","+Y","-Y"],default="auto",help="跨层先里后外的外侧基准；auto按工位机械臂位置判断，与允许接近方向独立")
+    p.add_argument("--outside-side",choices=["auto","+X","-X","+Y","-Y"],default="auto",help="俯视左上角坐标：+X右、-X左、+Y下、-Y上；auto按工位机械臂位置判断，与接近方向独立")
     p.add_argument("--paper-config",type=Path,help="论文模式参数JSON；未提供的参数使用显式研究默认值")
     p.add_argument("--robot-scene",type=Path,help="为robot2025启用所选机械臂离线IK/碰撞/路径检查；需要工位配置JSON")
     p.add_argument("--workcell-editor",action="store_true",help="打开可选择EC66/FANUC的可视化工位编辑器")
@@ -95,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.algorithm=="robot2025":
             from ananno_phase2.robot_pipeline import RobotTwoPhasePacker,annotate_robot_document
             from ananno_phase2.robot_approach import ApproachConfig,outside_side_from_workcell
+            from ananno_phase2.pallet_coordinates import PUBLIC_FRAME,reflected_side
             verifier=None
             if args.robot_scene:
                 import os
@@ -103,10 +104,10 @@ def main(argv: list[str] | None = None) -> int:
                 from ananno_phase2.robot_offline import OfflineRobotVerifier
                 verifier=OfflineRobotVerifier(args.robot_scene)
                 verifier.configure_pallet_axes(input_pallet)
-            outside_side=args.outside_side if args.outside_side!='auto' else outside_side_from_workcell(pallet,verifier.base_pallet if verifier is not None else None,length_scale_to_m=verifier.scale if verifier is not None else 1.0)
+            outside_side=args.outside_side if args.outside_side!='auto' else reflected_side(outside_side_from_workcell(pallet,verifier.base_pallet if verifier is not None else None,length_scale_to_m=verifier.scale if verifier is not None else 1.0))
             if verifier is not None and outside_side is None:raise ValueError('无法确定里外基准，请用--outside-side手动指定外侧。')
             print('装箱优先：跨层先里后外，外侧 '+outside_side if outside_side else '里外基准未确定，保留原可行顺序；可用--outside-side手动指定。')
-            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(open_directions=args.open_direction or ('+Z',),outside_side=outside_side,direction_policy=args.direction_policy),robot_verifier=verifier)
+            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(open_directions=args.open_direction or ('+Z',),outside_side=outside_side,direction_policy=args.direction_policy,coordinate_frame=PUBLIC_FRAME),robot_verifier=verifier)
         else:packer=PaperTwoPhasePacker(pallet,PaperConfig(**parameters))
         result=packer.pack(boxes,log=print)
         algorithm_seconds = time.perf_counter() - algorithm_started
@@ -116,11 +117,12 @@ def main(argv: list[str] | None = None) -> int:
         result = FixedSequencePacker(pallet, args.support).pack(boxes)
         algorithm_seconds = time.perf_counter() - algorithm_started
         print("阶段性复现：固定序列 + 简化 Extreme Points（不是完整论文复现）")
+    print("坐标：托盘俯视左上角O，X向右、Y向下、Z向上。")
     print("order pallet box   x     y     z   pose    L     W     H")
     for p in result.placements:
-        print(f"{p.order:>5} {p.pallet_index+1:>6} {p.box.id:<4} {p.point.x:>5g} {p.point.y:>5g} {p.point.z:>5g} "
+        print(f"{p.order:>5} {p.pallet_index+1:>6} {p.box.id:<4} {p.point.x:>5g} {pallet.width-p.point.y-p.orientation.width:>5g} {p.point.z:>5g} "
               f"{p.orientation.code:<5} {p.orientation.length:>5g} {p.orientation.width:>5g} {p.orientation.height:>5g}")
-    write_placements_csv(args.output_csv, result)
+    write_placements_csv(args.output_csv, result,public_coordinates=True)
     output_json = args.output_json
     document=write_packing_plan_json(None,result)
     document["timing"] = {"algorithm_seconds": algorithm_seconds, "clock": "perf_counter",
@@ -130,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.algorithm=="robot2025":annotate_robot_document(document,packer)
         else:annotate_document(document,packer.diagnostics)
         if output_json is None: output_json=ROOT/"output"/("robot2025_plan.json" if args.algorithm=="robot2025" else "paper_plan.json")
+    from ananno_phase2.pallet_coordinates import public_document
+    document=public_document(document)
     if args.input_json and output_json is None:
         output_json = ROOT / "output" / "packing_plan.json"
     if output_json:

@@ -14,7 +14,7 @@ from pathlib import Path
 from PyQt5 import QtCore as C,QtGui as G,QtWidgets as W
 
 from .paper_config import PaperConfig
-from .run_control import PackingTimedOut
+from .run_control import PackingTimedOut,RobotPlanningIncomplete
 from .models import Pallet
 from .qt_widgets import MetricCard,PalletCanvas,PalletCard,WORKBENCH_STYLE,HistoryItemDelegate
 from .workbench_service import PackingCancelled,finite_number,inspect_input,load_result,run_packing_job
@@ -61,6 +61,7 @@ class PackingWorker(C.QObject):
     result=C.pyqtSignal(object)
     stopped=C.pyqtSignal()
     expired=C.pyqtSignal(str)
+    pending=C.pyqtSignal(str)
     failed=C.pyqtSignal(str)
     finished=C.pyqtSignal()
 
@@ -74,6 +75,8 @@ class PackingWorker(C.QObject):
         try:
             result=run_packing_job(*self.args,**self.options,cancelled=self.cancel_event.is_set,
                                    progress=self.progress.emit,log=self.log.emit)
+        except RobotPlanningIncomplete as exc:
+            self.pending.emit(str(exc))
         except PackingTimedOut as exc:
             self.expired.emit(str(exc))
         except PackingCancelled:
@@ -306,7 +309,7 @@ class PackingWorkbench(W.QMainWindow):
         controls=W.QHBoxLayout();self.animation_buttons=[]
         for text,action in (("最终",self.final_state),("播放",self.play_animation),("暂停",self.pause_animation),
             ("前一步",self.previous_step),("后一步",self.next_step),("重置",self.reset_animation),
-            ("复位视角",self.detail_canvas.reset_view)):
+            ("俯视坐标",self.detail_canvas.view_top),("复位视角",self.detail_canvas.reset_view)):
             btn=button(text,action);controls.addWidget(btn);self.animation_buttons.append(btn)
         detail.addLayout(controls)
         line=W.QHBoxLayout()
@@ -537,6 +540,7 @@ class PackingWorkbench(W.QMainWindow):
         self._worker.result.connect(self._on_result)
         self._worker.stopped.connect(self._on_stopped)
         self._worker.expired.connect(self._on_timed_out)
+        self._worker.pending.connect(self._on_robot_pending)
         self._worker.failed.connect(self._error)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
@@ -573,6 +577,10 @@ class PackingWorkbench(W.QMainWindow):
         self._log(f"完成：{result['packed_box_count']} 箱，{result['pallet_count']} 托盘；算法计算时间 {result['algorithm_seconds']:.3f} 秒，总处理时间 {result['elapsed_seconds']:.3f} 秒。")
 
     @C.pyqtSlot(str)
+    def _on_robot_pending(self,message):
+        self._set_status('机器人规划未完成');self.progress_text.setText(message);self._log(message)
+
+    @C.pyqtSlot(str)
     def _on_timed_out(self,message):
         self._set_status('已超时（未完成）');self.progress_text.setText(message)
         self._log(message)
@@ -604,6 +612,8 @@ class PackingWorkbench(W.QMainWindow):
     def load_result_file(self,path):self.display_document(load_result(path),Path(path))
 
     def display_document(self,document,path=None):
+        from .pallet_coordinates import public_document
+        document=public_document(document)
         self._view_revision+=1
         for dialog in list(self._motion_windows.values()):dialog.close()
         self._motion_windows.clear()
@@ -747,7 +757,7 @@ class PackingWorkbench(W.QMainWindow):
         self.selected_title.setText(f"PALLET-{pallet['pallet_index']:03d}")
         self.selected_subtitle.setText(f"已装 {len(items)} 箱 | 填充率 {pallet['volume_utilization']:.1%}")
         convention=(self.document or {}).get('coordinate_system',{}).get('pallet_axis_convention')
-        note='X沿长边，Y沿短边，Z向上。' if convention=='long_side_x' else '历史/输入坐标：X=length，Y=width，Z向上。'
+        note='左上角O：+X沿长边向右，+Y沿短边向下，+Z向上。' if convention=='long_side_x' else '左上角O：+X沿length向右，+Y沿width向下，+Z向上。'
         self.current_info.setText(f"X {dims['length']:g} × Y {dims['width']:g} × Z {dims['height']:g}\n{note}")
         for key,card in self.pallet_metrics.items():card.set_value(values[key])
 

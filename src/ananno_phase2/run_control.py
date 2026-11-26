@@ -17,6 +17,10 @@ class PackingTimedOut(TimeoutError):
     """The computation budget expired; this is neither success nor proof of infeasibility."""
 
 
+class RobotPlanningIncomplete(RuntimeError):
+    """Local motion search remains unknown; do not reject the packing layout."""
+
+
 class JobMonitor(AbstractContextManager):
     def __init__(self,output_dir,*,max_seconds=3600.,log=None,progress=None,cancelled=None,
                  request=None,heartbeat_seconds=5.):
@@ -94,8 +98,8 @@ class JobMonitor(AbstractContextManager):
             self._closed=True
             if not self._active and isinstance(error,(PackingTimedOut,PackingCancelled)):self._activate()
             if self._active:
-                status='completed' if error is None else 'timed_out' if isinstance(error,PackingTimedOut) else 'cancelled' if isinstance(error,PackingCancelled) else 'failed'
-                message={'completed':'任务完成','timed_out':'任务超时，本次未完成','cancelled':'用户已停止，本次未完成','failed':'任务失败，本次未完成'}[status]
+                status='completed' if error is None else 'validation_pending' if isinstance(error,RobotPlanningIncomplete) else 'timed_out' if isinstance(error,PackingTimedOut) else 'cancelled' if isinstance(error,PackingCancelled) else 'failed'
+                message={'completed':'任务完成','validation_pending':'机器人局部规划未完成，未判定垛型不可行','timed_out':'任务超时，本次未完成','cancelled':'用户已停止，本次未完成','failed':'任务失败，本次未完成'}[status]
                 self._line(message+('：'+str(error) if error is not None else ''))
                 self._write_status(status,force=True,error=error);self._file.close()
         if self._thread is not None and self._thread is not threading.current_thread():self._thread.join(timeout=2.)

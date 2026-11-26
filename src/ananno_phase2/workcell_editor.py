@@ -30,7 +30,7 @@ class WorkcellEditor(W.QDialog):
         self.setWindowTitle('机器人可视化工位 · 选择型号与工位位置');self.resize(1440,900);self.setMinimumSize(1100,720)
         self.setStyleSheet('QDialog {background:#f3f6fa;} QLabel {color:#30485f;} QGroupBox {font-weight:600;border:1px solid #dce4ec;border-radius:5px;margin-top:9px;padding-top:9px;} QGroupBox::title{subcontrol-origin:margin;left:10px;} QDoubleSpinBox {min-height:24px;} QPushButton {min-height:27px;padding:3px 9px;}')
         layout=W.QVBoxLayout(self);header=W.QHBoxLayout();self.title=W.QLabel();self.title.setStyleSheet('font-size:20px;font-weight:700;')
-        header.addWidget(self.title);header.addStretch();header.addWidget(W.QLabel('X沿托盘长边 · Y沿短边 · Z向上  |  位置单位 mm'))
+        header.addWidget(self.title);header.addStretch();header.addWidget(W.QLabel('托盘俯视：左上角O · X向右 · Y向下 · Z向上  |  位置单位 mm'))
         layout.addLayout(header)
         tools=W.QHBoxLayout();layout.addLayout(tools)
         self.canvas=WorkcellCanvas(self.state,self.geometry)
@@ -97,8 +97,10 @@ class WorkcellEditor(W.QDialog):
         self.box_budget=spin(options['box_budget_seconds'],.1,3600,1);self.box_budget.setObjectName('boxValidationSeconds');self.box_budget.setSingleStep(5)
         self.path_budget=spin(options['path_budget_seconds'],.1,3600,1);self.path_budget.setObjectName('pathValidationSeconds');self.path_budget.setSingleStep(.5)
         self.full_batch=W.QSpinBox();self.full_batch.setRange(1,10000);self.full_batch.setValue(options['full_validation_batch_size'])
+        self.local_retries=W.QSpinBox();self.local_retries.setObjectName('localMotionRetries');self.local_retries.setRange(0,5);self.local_retries.setValue(options['local_motion_retries'])
         self.tiered_check=W.QCheckBox('GA快速筛选后，按排名分批完整验证');self.tiered_check.setChecked(options['tiered_validation'])
-        planning_form.addRow('每箱验证上限 / 秒',self.box_budget);planning_form.addRow('每段路径上限 / 秒',self.path_budget)
+        planning_form.addRow('每箱验证上限 / 秒',self.box_budget);planning_form.addRow('单次路径规划预算 / 秒',self.path_budget)
+        planning_form.addRow('单段失败后局部重试 / 次',self.local_retries)
         planning_form.addRow('详细验证批次 / 个',self.full_batch);planning_form.addRow(self.tiered_check)
         motion=motion_options(self.state.config)
         self.pick_lift=spin(motion['pick_lift_m']*1000,1,2000);self.pick_lift.setObjectName('pickLiftMm')
@@ -108,9 +110,9 @@ class WorkcellEditor(W.QDialog):
             planning_form.addRow(title,widget);widget.valueChanged.connect(lambda value,key=key:self._planning_changed(key,value/1000))
         smooth_note=W.QLabel('搬运段可绕障；最后从预放置点下降或斜下降。关节轨迹自动做避障捷径和连续速度/加速度平滑，抓取及释放等操作边界保留停止。')
         smooth_note.setWordWrap(True);planning_form.addRow(smooth_note)
-        note=W.QLabel('每箱独立计时；整次任务仍受装箱设置中的总时限约束。快速筛选不代表路径通过，最终结果必须完整验证。缓存只在本次计算进程内复用，不跨重启恢复。')
+        note=W.QLabel('局部重试使用不同IK分支/搜索种子，仍受每箱和总时限约束。平滑失败先恢复原路径检查；重试耗尽则保留前缀与诊断并结束为“规划未完成”，不整盘退回GA。缓存仅本次进程有效。')
         note.setWordWrap(True);planning_form.addRow(note)
-        for widget,key in ((self.box_budget,'box_budget_seconds'),(self.path_budget,'path_budget_seconds'),(self.full_batch,'full_validation_batch_size')):
+        for widget,key in ((self.box_budget,'box_budget_seconds'),(self.path_budget,'path_budget_seconds'),(self.full_batch,'full_validation_batch_size'),(self.local_retries,'local_motion_retries')):
             widget.valueChanged.connect(lambda value,key=key:self._planning_changed(key,value))
         self.tiered_check.toggled.connect(lambda value:self._planning_changed('tiered_validation',value));tabs.addTab(planning,'验证与计算')
         split.addWidget(sidebar);split.setStretchFactor(0,1);split.setStretchFactor(1,0);sidebar.setMinimumWidth(360);sidebar.setMaximumWidth(420)
@@ -167,6 +169,7 @@ class WorkcellEditor(W.QDialog):
             field.setRange(min(.001,value),max(3600.,value));field.setValue(value)
         self.full_batch.setMaximum(max(10000,options['full_validation_batch_size']))
         self.full_batch.setValue(options['full_validation_batch_size']);self.tiered_check.setChecked(options['tiered_validation'])
+        self.local_retries.setValue(options['local_motion_retries'])
         self._syncing=False;self._sync_joints()
 
     def _robot_changed(self,*args):
@@ -199,12 +202,12 @@ class WorkcellEditor(W.QDialog):
 
     def select_entity(self,key):
         self.entity=key;self.canvas.selection=key;self._syncing=True
-        self.object_combo.setCurrentIndex(self.object_combo.findData(key));pose=self.state.pose(key)
+        self.object_combo.setCurrentIndex(self.object_combo.findData(key));pose=self.state.pallet_edit_pose() if key=='pallet' else self.state.pose(key)
         for field,value in zip(self.position_fields,pose[:3,3]*1000):field.setValue(float(value));field.setEnabled(key!='robot')
         self.yaw_field.setValue(math.degrees(math.atan2(pose[1,0],pose[0,0])));self.yaw_field.setEnabled(key!='robot')
         size=self.state.dimensions if key=='pallet' else self.state.table_size if key=='pickup' else next((o['size'] for o in self.state.obstacles if o['id']==key),[0,0,0])
         for field,value in zip(self.size_fields,np.asarray(size)*1000):field.setValue(float(value));field.setEnabled(key not in ('robot','pallet'))
-        self.pose_note.setText({'pallet':'位置基准：装箱底面角点P0。托盘长边为局部X，短边为局部Y；尺寸跟随装箱设置。',
+        self.pose_note.setText({'pallet':'位置基准：俯视左上角底面P0。局部+X沿长边向右、+Y沿短边向下、+Z向上。上方XYZ数值为P0相对机器人基座的位置。',
             'pickup':'位置基准：取箱台面中心。Z可以低于机器人基座；下面尺寸为台体长、宽、高。',
             'robot':'参考模型base_link底座原点。FANUC控制器base在其上方670mm，现场坐标需核对。移动托盘/取箱台设置相对位置。' if self.state.config.get('robot_id')=='fanuc_r2000ic210l' else '机械臂基座固定在原点。移动托盘和取箱台，设置它们相对机械臂的位置。'}.get(key,'位置基准：障碍物几何中心。'))
         self._syncing=False;self.canvas.update()
@@ -212,9 +215,17 @@ class WorkcellEditor(W.QDialog):
     def _changed(self):self.status.setText('工位已修改 · 尚未验证');self.canvas.update()
     def _canvas_moved(self,key):self.select_entity(key);self._changed()
     def _position_changed(self,*args):
-        if not self._syncing:self.state.set_position(self.entity,[f.value()/1000 for f in self.position_fields]);self._changed()
+        if not self._syncing:
+            position=[f.value()/1000 for f in self.position_fields]
+            if self.entity=='pallet':self.state.set_pallet_edit_position(position)
+            else:self.state.set_position(self.entity,position)
+            self._changed()
     def _yaw_changed(self,value):
-        if not self._syncing:self.state.set_yaw(self.entity,math.radians(value));self._changed()
+        if not self._syncing:
+            origin=self.state.pallet_public_axes()[0] if self.entity=='pallet' else None
+            self.state.set_yaw(self.entity,math.radians(value))
+            if origin is not None:self.state.set_pallet_edit_position(origin)
+            self._changed()
     def _size_changed(self,*args):
         if self._syncing:return
         size=[f.value()/1000 for f in self.size_fields]

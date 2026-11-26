@@ -92,7 +92,10 @@ class ReplayCanvas(WorkcellCanvas):
         scale=state.config['length_scale_to_m']
         for key in self.frame.completed_ids:
             item=self._items[key];size=np.array([item['placed_size'][k] for k in ('length','width','height')])*scale
-            center=np.array([item['position'][k] for k in ('x','y','z')])*scale+size/2
+            from .pallet_coordinates import PUBLIC_FRAME,reflected_box_position
+            position=item['position']
+            if self.bundle.timeline.coordinate_frame==PUBLIC_FRAME:position=reflected_box_position(position,item['placed_size']['width'],state.dimensions[1]/scale)
+            center=np.array([position[k] for k in ('x','y','z')])*scale+size/2
             result.append(('placed_'+key,box_points(size,state.pallet_pose@transform(center)),self._colors[key]))
         if self.frame.source_id is not None:
             key=self.frame.source_id;item=self._items[key];size=self._original_size(item)

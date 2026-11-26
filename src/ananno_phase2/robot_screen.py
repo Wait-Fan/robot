@@ -7,6 +7,7 @@ from .robot_grasp import placement_grasp,verifier_grasp_config
 
 
 def screen_sequence(verifier,placements,pallet,approach,*,cancelled=None):
+    approach=approach.calculation_config()
     v=verifier;started=time.monotonic();budget=float(v.config.get('screen_budget_seconds',1.))
     if not math.isfinite(budget) or budget<=0:raise ValueError('快速筛选预算必须为有限正数')
     checked=clear=0;placed=[];previous=[];active=None;seed=v.initial.copy();grasp_config=verifier_grasp_config(v)

@@ -130,8 +130,10 @@ def project_scene(pallet, width, height, *, step=None, yaw=35, pitch=28, zoom=1,
         polygons.append((sum(v[2] for v in projected_face)/len(projected_face),
                          [(v[0],v[1]) for v in projected_face],color))
     # 三个轴方向与输入坐标一致，明确标记容器尺寸。
-    for vertex, text in ((1, f"X {length:g}"), (3, f"Y {breadth:g}"), (4, f"Z {tall:g}")):
-        texts.append((frame[vertex][0], frame[vertex][1]-10, text))
+    for vertex, text in ((1, f"X+ {length:g}"), (3, f"Y+ {breadth:g}"), (4, f"Z+ {tall:g}")):
+        if vertex==4 and abs(ce)<1e-8:texts.append((frame[0][0]+35,frame[0][1]+16,'⊙ Z+'))
+        else:texts.append((frame[vertex][0], frame[vertex][1]-10, text))
+    texts.append((frame[0][0],frame[0][1]-14,'O (0,0,0)'))
     return polygons, lines, texts
 
 

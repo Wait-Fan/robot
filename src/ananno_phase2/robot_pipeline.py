@@ -9,7 +9,7 @@ from .paper_pipeline import PaperTwoPhasePacker,NoPaperSolution,annotate_documen
 from .paper_layers import PaperLayerBuilder,LayerBuildResult
 from .paper_ga import TypeEvaluation
 from .robot_approach import ApproachConfig,executable_sequence,anchor_inside_out
-from .run_control import PackingTimedOut
+from .run_control import PackingTimedOut,RobotPlanningIncomplete
 
 
 
@@ -30,6 +30,10 @@ def _validated_sequence(placements,pallet,config,approach,verifier=None,cancelle
         if motion is not None and not motion['passed']:
             if motion.get('reason') in ('sequence_budget_exhausted','box_validation_budget_exhausted'):
                 raise PackingTimedOut('机器人单箱验证预算耗尽，本次未完成；不会将整盘作为不可行退回GA重算。可在工位布局中调整验证预算；日志已保留。箱号：'+str(motion.get('box_id','未知')))
+            if motion.get('status')=='unverified':
+                raise RobotPlanningIncomplete('机器人局部规划重试后仍未完成，未判定垛型不可行；保留已验证前缀，不退回GA重排。箱 '+str(motion.get('box_id','未知'))+
+                    '，动作 '+str(motion.get('failed_operation','未知'))+'，原因 '+str(motion.get('reason','未知'))+
+                    ('；诊断：'+str(motion['diagnostic_file']) if motion.get('diagnostic_file') else '；详情见运行日志。'))
             last_motion=motion
             audit['reason']='robot_'+motion.get('status','unverified')+':'+motion.get('reason','unknown')
             audit['passed']=False
@@ -77,7 +81,7 @@ class RobotLayerBuilder(PaperLayerBuilder):
 
 class RobotTwoPhasePacker(PaperTwoPhasePacker):
     def __init__(self,pallet,config=None,approach=None,robot_verifier=None,*,seal_verified_pallets=False):
-        super().__init__(pallet,config);self.approach=approach or ApproachConfig()
+        super().__init__(pallet,config);self.input_approach=approach or ApproachConfig();self.approach=self.input_approach.calculation_config()
         from .robot_execution_constraints import RobotExecutionConstraintSet
         self.constraints=RobotExecutionConstraintSet(pallet,self.config)
         self.robot_diagnostics={};self.evaluations=0;self.rejected=0
@@ -136,6 +140,10 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
         return TypeEvaluation(True,evaluated.heterogeneity,evaluated.compactness,payload)
 
     def pack(self,boxes,*,progress=None,cancelled=None,log=None):
+        from .pallet_coordinates import PUBLIC_FRAME,public_log_text
+        if log is not None and self.input_approach.coordinate_frame==PUBLIC_FRAME:
+            external_log=log
+            log=lambda message:external_log(public_log_text(message))
         self.evaluations=self.rejected=self.robot_rejected=0
         self.constraints.cancelled=cancelled
         self._sealed_pallet_indices=set()

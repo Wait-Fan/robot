@@ -21,6 +21,8 @@ class ReplayFrame:
 
 class ReplayTimeline:
     def __init__(self,document,pallet_index):
+        from .pallet_coordinates import INTERNAL_FRAME
+        self.coordinate_frame=document.get('coordinate_system',{}).get('frame',INTERNAL_FRAME)
         try:
             audit=document.get('robot_diagnostics',{})
             motion=audit.get('motion_verification',{})

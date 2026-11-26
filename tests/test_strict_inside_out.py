@@ -24,8 +24,10 @@ class StrictInsideOutTests(unittest.TestCase):
                 self.orders.append([p.box.id for p in placements])
                 return {'passed':placements[0].box.id=='near','status':'unverified','reason':'test_path'}
         v=V();items=[item('near'),item('far',y=2,order=2)]
-        ordered,audit,_=_validated_sequence(items,Pallet(3,3,2),PaperConfig(),ApproachConfig('+Z',outside_side='-Y'),v)
-        self.assertIsNone(ordered);self.assertEqual(v.orders,[['far','near']])
+        from ananno_phase2.run_control import RobotPlanningIncomplete
+        with self.assertRaises(RobotPlanningIncomplete):
+            _validated_sequence(items,Pallet(3,3,2),PaperConfig(),ApproachConfig('+Z',outside_side='-Y'),v)
+        self.assertEqual(v.orders,[['far','near']])
 
     def test_generated_layout_can_be_anchored_at_far_corner(self):
         from ananno_phase2.robot_approach import anchor_inside_out

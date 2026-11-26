@@ -7,6 +7,7 @@ import time
 
 
 def verify_pallets(verifier,placements,pallet,approach,*,cancelled=None):
+    approach=approach.calculation_config()
     v=verifier;started=time.monotonic()
     def check():
         if cancelled is not None and cancelled():raise InterruptedError('Robot planning cancelled')
@@ -17,7 +18,7 @@ def verify_pallets(verifier,placements,pallet,approach,*,cancelled=None):
         'path_seconds':v.path_seconds,'acceleration':v.acceleration,'grasp_rotation':v.grasp_rotation,
         'offset':v.tcp_offset,'pallet':[pallet.length,pallet.width,pallet.max_height],
         'sides':approach.open_directions,'policy':approach.direction_policy,'outside':approach.outside_side,
-        'implementation':'whole_frontier_edge_grasp_prepose_c2_v2'}
+        'implementation':'local_recovery_original_path_v3'}
     context_hash=hashlib.sha256(json.dumps(context,sort_keys=True,default=lambda x:x.tolist()).encode()).hexdigest()
     groups={}
     for p in sorted(placements,key=lambda p:(p.pallet_index,p.order)):groups.setdefault(p.pallet_index,[]).append(p)
@@ -41,9 +42,17 @@ def verify_pallets(verifier,placements,pallet,approach,*,cancelled=None):
             if not report['passed']:
                 report.update(validation_pallet_order=[i+1 for i in visit],reused_pallets=reused,
                               reused_prefix_boxes=reused_boxes)
+                report['current_candidate_verified_pallets']=[i+1 for i in sorted(set(reports)|set(hits))]
+                checkpoint=getattr(v,'save_verified_pallet',None)
+                if checkpoint:
+                    for known_index,known_report in hits.items():checkpoint(keys[known_index],groups[known_index],known_report)
+                saver=getattr(v,'save_pending_report',None)
+                if saver:saver(report)
                 return report
             v.pallet_cache[key]=copy.deepcopy(report);v.pallet_cache.move_to_end(key)
             while len(v.pallet_cache)>64:v.pallet_cache.popitem(last=False)
+        saver=getattr(v,'save_verified_pallet',None)
+        if saver:saver(key,items,report)
         for stage in report['stages']:stage['pallet']=index+1
         for direction in report.get('directions_by_box',[]):direction['pallet']=index+1
         reports[index]=report

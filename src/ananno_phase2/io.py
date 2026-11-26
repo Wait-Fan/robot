@@ -48,7 +48,7 @@ def read_boxes_csv(path: str | Path) -> list[Box]:
     return boxes
 
 
-def write_placements_csv(path: str | Path, result: PackingResult) -> None:
+def write_placements_csv(path: str | Path, result: PackingResult,*,public_coordinates=False) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["order", "pallet", "box_id", "x", "y", "z", "orientation", "length", "width", "height"]
@@ -58,7 +58,7 @@ def write_placements_csv(path: str | Path, result: PackingResult) -> None:
         for p in result.placements:
             writer.writerow(
                 {"order": p.order, "pallet": p.pallet_index + 1, "box_id": p.box.id,
-                 "x": p.point.x, "y": p.point.y, "z": p.point.z, "orientation": p.orientation.code,
+                 "x": p.point.x, "y": result.pallet.width-p.point.y-p.orientation.width if public_coordinates else p.point.y, "z": p.point.z, "orientation": p.orientation.code,
                  "length": p.orientation.length, "width": p.orientation.width, "height": p.orientation.height}
             )
 

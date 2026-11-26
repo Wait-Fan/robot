@@ -20,7 +20,7 @@ class WorkcellCanvas(W.QWidget):
 
     def __init__(self,state,geometry,parent=None):
         super().__init__(parent);self.state=state;self.geometry=geometry;self.selection='pallet'
-        self.yaw=math.radians(30);self.pitch=math.radians(30);self.zoom=1.
+        self.yaw=-math.atan2(self.state.pallet_pose[1,0],self.state.pallet_pose[0,0])-math.radians(35);self.pitch=math.radians(28);self.zoom=1.
         self.focus=np.zeros(3);self.radius=1.;self._meshes=[];self._q=None;self._hits=[];self._drag=None
         self.setMinimumSize(550,420);self.setMouseTracking(True)
         self.setToolTip('左键选中并移动对象；右键旋转视角；滚轮缩放。俯视图适合摆放工位。')
@@ -52,8 +52,8 @@ class WorkcellCanvas(W.QWidget):
         self.focus=(low+high)/2;self.radius=max(.45,float(np.linalg.norm(high-low))/2)
         self.zoom=1.;self.update()
 
-    def view_top(self):self.yaw=0.;self.pitch=math.pi/2;self.update()
-    def view_3d(self):self.yaw=math.radians(30);self.pitch=math.radians(30);self.update()
+    def view_top(self):self.yaw=-math.atan2(self.state.pallet_pose[1,0],self.state.pallet_pose[0,0]);self.pitch=math.pi/2;self.update()
+    def view_3d(self):self.yaw=-math.atan2(self.state.pallet_pose[1,0],self.state.pallet_pose[0,0])-math.radians(35);self.pitch=math.radians(28);self.update()
 
     def matrix(self):
         ca,sa=math.cos(self.yaw),math.sin(self.yaw);sp,cp=math.sin(self.pitch),math.cos(self.pitch)
@@ -120,11 +120,15 @@ class WorkcellCanvas(W.QWidget):
                 if key==self.selection:selected_points=points;break
         if len(selected_points):
             for a,b in EDGES:self._line(painter,selected_points[a],selected_points[b],'#ed922d',2)
+        public_origin,public_basis=self.state.pallet_public_axes()
         for start,basis,label,color in [(np.zeros(3),np.eye(3),'基座 O','#315777'),
-                (self.state.pallet_pose[:3,3],self.state.pallet_pose[:3,:3],'托盘 P0','#b77828')]:
+                (public_origin,public_basis,'托盘 P0 · 左上角','#b77828')]:
             for i,c in enumerate(('#d85a50','#3e9c6b','#4b7fc6')):
                 end=start+basis[:,i]*.22;self._line(painter,start,end,c,2)
-                p=self.project(np.array([end]))[0];painter.setPen(G.QColor(c));painter.drawText(C.QPointF(p[0]+4,p[1]-3),'XYZ'[i]+'+')
+                p=self.project(np.array([end]))[0];painter.setPen(G.QColor(c))
+                text='XYZ'[i]+'+'
+                if i==2 and abs(self.pitch-math.pi/2)<1e-6:text='⊙ Z+';p=p.copy();p[1]-=16
+                painter.drawText(C.QPointF(p[0]+4,p[1]-3),text)
             p=self.project(np.array([start]))[0];painter.setPen(G.QColor(color));painter.drawText(C.QPointF(p[0]+4,p[1]+16),label)
         tcp=self.geometry.tcp_pose(self.state.q)[:3,3];p=self.project(np.array([tcp]))[0]
         painter.setPen(G.QPen(G.QColor('#d96c35'),2));painter.drawEllipse(C.QPointF(p[0],p[1]),4,4)

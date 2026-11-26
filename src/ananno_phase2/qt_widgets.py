@@ -130,6 +130,9 @@ class PalletCanvas(QWidget):
         self.yaw, self.pitch, self.zoom = self._initial_camera
         self.update()
 
+    def view_top(self):
+        self.yaw,self.pitch,self.zoom=0.,90.,1.;self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -156,7 +159,7 @@ class PalletCanvas(QWidget):
             painter.drawLine(QPointF(*start),QPointF(*end))
         painter.setFont(QFont("Segoe UI", 9))
         for x, y, text in texts:
-            painter.setPen(QColor("#304b67") if text.startswith(("X ", "Y ", "Z "))
+            painter.setPen(QColor("#304b67") if text.startswith(("X ", "Y ", "Z ","X+","Y+","Z+","O "))
                            else QColor("#172a43"))
             bounds = QFontMetricsF(painter.font()).boundingRect(text)
             painter.drawText(QPointF(x - bounds.width() / 2, y), text)
@@ -279,6 +282,8 @@ class PalletCard(QFrame):
         speed_row.addWidget(self.rate_label)
         layout.addLayout(speed_row)
         self.canvas = PalletCanvas(self)
+        top_view=QPushButton('俯视');top_view.setObjectName('compact');top_view.clicked.connect(self.canvas.view_top)
+        top.insertWidget(top.count()-1,top_view)
         self.canvas.selected.connect(self.select)
         layout.addWidget(self.canvas, 1)
         self.render()

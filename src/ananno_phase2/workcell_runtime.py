@@ -24,5 +24,5 @@ def create_scene_verifier(project_dir,scene_path,pallet,output_dir,expected_sha2
     if snapshot.exists() and snapshot.read_text(encoding='utf-8')!=serialized:
         snapshot=directory/f'robot_scene_snapshot_{digest[:12]}.json'
     snapshot.write_text(serialized,encoding='utf-8')
-    verifier=OfflineRobotVerifier(snapshot);verifier.configure_pallet_axes(pallet)
+    verifier=OfflineRobotVerifier(snapshot);verifier.configure_pallet_axes(pallet);verifier.diagnostics_dir=directory
     return verifier,snapshot,digest

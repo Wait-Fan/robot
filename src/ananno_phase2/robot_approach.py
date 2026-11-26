@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from .constraints import EPS
 from .packer import check_cancelled
 from .paper_constraints import PaperConstraintSet
+from .pallet_coordinates import PUBLIC_FRAME,INTERNAL_FRAME,reflected_side
 
 
 @dataclass(frozen=True)
@@ -13,8 +14,10 @@ class ApproachConfig:
     open_directions: tuple[str, ...] | None = None
     outside_side: str | None = None
     direction_policy: str = "first_feasible"
+    coordinate_frame: str = INTERNAL_FRAME
 
     def __post_init__(self):
+        if self.coordinate_frame not in (PUBLIC_FRAME,INTERNAL_FRAME):raise ValueError('未知托盘坐标系')
         if self.direction_policy not in ("first_feasible","side_direct_first","preplace_optimized"):raise ValueError("未知接近方向选择策略")
         if self.outside_side not in (None,'+X','-X','+Y','-Y'):raise ValueError('里外基准必须为水平外侧+X/-X/+Y/-Y')
         directions = tuple(dict.fromkeys(self.open_directions)) if self.open_directions is not None else (self.open_direction,)
@@ -22,6 +25,11 @@ class ApproachConfig:
             raise ValueError('开放方向必须为+X/-X/+Y/-Y/+Z；不支持穿过托盘从底部接近')
         object.__setattr__(self, 'open_directions', directions)
         object.__setattr__(self, 'open_direction', directions[0])
+
+    def calculation_config(self):
+        if self.coordinate_frame==INTERNAL_FRAME:return self
+        return replace(self,open_directions=tuple(reflected_side(d) for d in self.open_directions),
+            outside_side=reflected_side(self.outside_side),coordinate_frame=INTERNAL_FRAME)
 
 
 def extent(item):
@@ -266,6 +274,7 @@ def _strict_sequence(placements,pallet,config,approach,cancelled=None):
 
 
 def executable_sequence(placements,pallet,config,approach,cancelled=None):
+    approach=approach.calculation_config()
     ordered,audit=(_strict_sequence if approach.outside_side else _executable_sequence)(placements,pallet,config,approach,cancelled)
     audit['direction_selection_policy']=approach.direction_policy
     audit['direction_choice_status']='geometric_candidate_only'
