@@ -53,7 +53,8 @@ class QtWorkbenchTests(unittest.TestCase):
         self.window.start_packing()
         self.wait_finished()
         self.assertEqual(self.window.document["summary"]["pallet_count"],2)
-        self.assertEqual(self.window.box_table.rowCount(),3)
+        # Box list follows the selected first pallet (2 packed boxes), not all 3.
+        self.assertEqual(self.window.box_table.rowCount(),2)
         self.assertEqual(self.window.unplaced_table.rowCount(),1)
         self.assertEqual(self.window.status_label.text(),"已完成")
         self.window.pallet_filter.setCurrentText("托盘 2")

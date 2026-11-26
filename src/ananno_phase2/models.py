@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+import math
 
 
 def _positive(name: str, value: float) -> None:
@@ -66,6 +67,12 @@ class Pallet:
     @property
     def volume(self) -> float:
         return self.length * self.width * self.max_height
+
+    def with_long_side_x(self) -> Pallet:
+        """Explicit calculation-frame normalization; never rewrites saved placements."""
+        if not all(math.isfinite(v) for v in (self.length,self.width,self.max_height)):
+            raise ValueError('托盘尺寸必须是有限正数')
+        return self if self.length>=self.width else Pallet(self.width,self.length,self.max_height)
 
 
 @dataclass(frozen=True)

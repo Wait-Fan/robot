@@ -12,6 +12,7 @@ from pathlib import Path
 from .io import (PAPER_DATASET_COLUMNS, read_boxes_csv, read_order_dataset,
                  read_packing_json, write_packing_plan_json, write_placements_csv)
 from .models import Pallet
+from .run_control import monitored_job
 from .packer import FixedSequencePacker, PackingCancelled, check_cancelled
 
 
@@ -86,8 +87,13 @@ def inspect_input(path: str | Path) -> dict:
             return {"kind": "paper", "summaries": dataset_order_summaries(path), "pallet": None}
         boxes, dims, kind = read_boxes_csv(path), None, "csv"
     _check_boxes(boxes)
+    source_dims=dims
+    if dims:
+        normalized=Pallet(*dims).with_long_side_x()
+        dims=(normalized.length,normalized.width,normalized.max_height)
     types = {(b.group,b.length,b.width,b.height) for b in boxes}
-    info={"kind": kind, "summaries": {"全部箱子": {"box_types": len(types), "boxes": len(boxes)}},"pallet": dims, **extra}
+    info={"kind": kind, "summaries": {"全部箱子": {"box_types": len(types), "boxes": len(boxes)}},"pallet": dims,
+          "pallet_source_dimensions":source_dims,"pallet_axes_swapped":bool(source_dims and source_dims[0]<source_dims[1]), **extra}
     if kind=="wcs_json":
         records={b.metadata["source_entry_index"]:b.metadata["source_case_type"] for b in boxes}
         info["case_types"]=dict(Counter(records.values()))
@@ -122,9 +128,11 @@ def _publish_outputs(staged, paths, cancelled):
         raise
 
 
+@monitored_job
 def run_packing_job(dataset, order_id, pallet_length, pallet_width, pallet_height,
                     support_ratio, output_dir, *, progress=None, cancelled=None, log=None,
-                    algorithm="basic",paper_config=None,approach_config=None) -> dict:
+                    algorithm="basic",paper_config=None,approach_config=None,robot_scene_path=None,
+                    robot_scene_sha256=None,max_seconds=3600.,robot_seal_verified_pallets=False) -> dict:
     started = time.perf_counter()
     check_cancelled(cancelled)
     dims = [finite_number(v, "托盘尺寸", positive=True) for v in
@@ -149,22 +157,36 @@ def run_packing_job(dataset, order_id, pallet_length, pallet_width, pallet_heigh
         boxes = read_boxes_csv(path)
     _check_boxes(boxes)
     if algorithm not in ("basic","paper","robot2025"): raise ValueError("未知装箱算法模式")
+    if robot_scene_path is not None and algorithm!='robot2025':raise ValueError('机器人工位只用于2025模式')
     if log and algorithm=="basic":
         log(f"已读取 {len(boxes)} 箱，开始固定序列 + 简化 EP 装箱。")
-    pallet = Pallet(*dims)
+    pallet = Pallet(*dims).with_long_side_x()
+    if log:log(f'本次托盘：X长边={pallet.length:g}，Y短边={pallet.width:g}，Z限高={pallet.max_height:g}。')
+    algorithm_started = time.perf_counter()
     if algorithm=="robot2025":
         from .robot_pipeline import RobotTwoPhasePacker
-        packer=RobotTwoPhasePacker(pallet,paper_config,approach_config)
-        result=packer.pack(boxes,progress=progress,cancelled=cancelled,log=log)
+        verifier=None;scene_snapshot=scene_digest=None
+        if robot_scene_path is not None:
+            from .workcell_runtime import create_scene_verifier
+            verifier,scene_snapshot,scene_digest=create_scene_verifier(Path(__file__).resolve().parents[2],
+                robot_scene_path,Pallet(*dims),output_dir,robot_scene_sha256)
+            if log:log('已启用当前工位的'+verifier.config.get('robot_name','EC66')+'完整离线检查：IK、机器人/夹具/携箱碰撞、抓取放置与撤离路径。')
+        packer=RobotTwoPhasePacker(pallet,paper_config,approach_config,robot_verifier=verifier,seal_verified_pallets=robot_seal_verified_pallets)
+        try:result=packer.pack(boxes,progress=progress,cancelled=cancelled,log=log)
+        except InterruptedError:
+            check_cancelled(cancelled);raise
+        if verifier is not None:
+            packer.robot_diagnostics.update(scene_source_sha256=scene_digest,scene_snapshot=scene_snapshot.name)
     elif algorithm=="paper":
         from .paper_pipeline import PaperTwoPhasePacker
         packer=PaperTwoPhasePacker(pallet,paper_config)
         result=packer.pack(boxes,progress=progress,cancelled=cancelled,log=log)
     else:
         result = FixedSequencePacker(pallet, support).pack(boxes, progress=progress, cancelled=cancelled)
+    algorithm_seconds = time.perf_counter() - algorithm_started
     check_cancelled(cancelled)
     if log:
-        log("几何计算完成，正在保存 JSON、CSV 和三维图。")
+        log(f"算法计算时间：{algorithm_seconds:.3f} 秒，正在保存 JSON、CSV 和三维图。")
     paths = build_output_paths(output_dir, order_id)
     paths["json"].parent.mkdir(parents=True, exist_ok=True)
     # 完整导出后发布；取消或异常会清理临时文件。
@@ -182,14 +204,16 @@ def run_packing_job(dataset, order_id, pallet_length, pallet_width, pallet_heigh
                  "case_type_record_counts":info["case_types"],
                  "handling":"ALL entries, one explicitly configured pallet size; no case_type/order filtering"}
         if import_metadata is not None: doc["input_import"] = import_metadata
-        if algorithm in ("paper","robot2025") or info["kind"]=="wcs_json" or import_metadata is not None:
-            staged["json"].write_text(json.dumps(doc,ensure_ascii=False,indent=2),encoding="utf-8")
+        doc["timing"] = {"algorithm_seconds": algorithm_seconds, "clock": "perf_counter",
+                         "scope": "solver_setup_and_packing_including_enabled_robot_verification; excludes_input_and_export"}
+        staged["json"].write_text(json.dumps(doc,ensure_ascii=False,indent=2),encoding="utf-8")
         write_placements_csv(staged["csv"], result)
         from .native_scene import save_overview
         save_overview(doc, staged["png"], cancelled=cancelled)
         check_cancelled(cancelled)
         _publish_outputs(staged, paths, cancelled)
     return {**doc["summary"], "paths": paths, "document": doc,
+            "algorithm_seconds": algorithm_seconds,
             "elapsed_seconds": time.perf_counter() - started}
 
 
@@ -268,6 +292,8 @@ def load_result(path: str | Path) -> dict:
         doc["summary"] = {"input_box_count": packed_count + len(doc["unplaced_items"]),
             "packed_box_count": packed_count, "unplaced_box_count": len(doc["unplaced_items"]),
             "pallet_count": len(doc["pallets"]), "volume_utilization": used_volume / capacity if capacity else 0.0}
+        if "timing" in doc:
+            doc["timing"]["algorithm_seconds"] = finite_number(doc["timing"]["algorithm_seconds"], "算法计算时间")
         return doc
     except (KeyError, TypeError, AttributeError, OverflowError, json.JSONDecodeError) as exc:
         raise ValueError(f"装箱方案格式不正确：{exc}") from exc

@@ -5,7 +5,7 @@ from PyQt5.QtCore import QPointF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QPolygonF
 from PyQt5.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton,
-    QSizePolicy, QSlider, QVBoxLayout, QWidget,
+    QSizePolicy, QSlider, QVBoxLayout, QWidget, QStyledItemDelegate, QStyle,
 )
 
 from .native_scene import project_scene
@@ -80,6 +80,23 @@ QToolTip { background: #172a43; color: white; border: 0; padding: 5px; }
 """
 
 
+class HistoryItemDelegate(QStyledItemDelegate):
+    """Popup rows must not inherit the dark toolbar combo's pale text palette."""
+    def paint(self,painter,option,index):
+        painter.save()
+        selected=bool(option.state & QStyle.State_Selected)
+        painter.fillRect(option.rect,QColor('#2563eb') if selected else QColor('#ffffff'))
+        painter.setPen(QColor('#ffffff') if selected else QColor('#1f2937'))
+        painter.setFont(option.font)
+        bounds=option.rect.adjusted(8,0,-8,0)
+        text=painter.fontMetrics().elidedText(str(index.data(Qt.DisplayRole) or ''),Qt.ElideMiddle,bounds.width())
+        painter.drawText(bounds,Qt.AlignVCenter|Qt.AlignLeft,text)
+        painter.restore()
+
+    def sizeHint(self,option,index):
+        size=super().sizeHint(option,index);size.setHeight(max(32,size.height()));return size
+
+
 class PalletCanvas(QWidget):
     """Orthographic 3D scene painted from the actual box placements."""
 
@@ -133,9 +150,13 @@ class PalletCanvas(QWidget):
         for _, points, color in faces:
             painter.setBrush(QColor(color))
             painter.drawPolygon(QPolygonF([QPointF(*point) for point in points]))
-        painter.setFont(QFont("Segoe UI", 8))
+        # Draw deck/height limits over the boxes so packed faces do not hide them.
+        for n,(start,end) in enumerate(lines):
+            painter.setPen(QPen(QColor('#315e89') if n<4 else QColor('#718ba5'),2.2 if n<4 else 1.4,Qt.SolidLine if n<4 else Qt.DashLine))
+            painter.drawLine(QPointF(*start),QPointF(*end))
+        painter.setFont(QFont("Segoe UI", 9))
         for x, y, text in texts:
-            painter.setPen(QColor("#63748b") if text.startswith(("X ", "Y ", "Z "))
+            painter.setPen(QColor("#304b67") if text.startswith(("X ", "Y ", "Z "))
                            else QColor("#172a43"))
             bounds = QFontMetricsF(painter.font()).boundingRect(text)
             painter.drawText(QPointF(x - bounds.width() / 2, y), text)
@@ -184,6 +205,7 @@ class PalletCard(QFrame):
 
     selected = pyqtSignal(int)
     expand_requested = pyqtSignal(int)
+    motion_requested = pyqtSignal(int)
 
     def __init__(self, pallet, parent=None):
         super().__init__(parent)
@@ -206,6 +228,11 @@ class PalletCard(QFrame):
         self.status_label = QLabel("已装载")
         self.status_label.setObjectName("palletStatus")
         top.addWidget(self.status_label)
+        self.motion_button=QPushButton('机械臂回放')
+        self.motion_button.setObjectName('compact')
+        self.motion_button.setToolTip('播放该托盘计算时保存的机器人抓取、搬运与放置轨迹')
+        self.motion_button.clicked.connect(lambda:self.motion_requested.emit(int(self.pallet['pallet_index'])))
+        top.addWidget(self.motion_button)
         expand = QPushButton("↗")
         expand.setObjectName("expand")
         expand.setToolTip("展开托盘")

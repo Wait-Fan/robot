@@ -1,0 +1,109 @@
+{
+  "source_archive": "E:\\范卓燃\\码垛算法\\文件\\甲方机械臂\\fanuc-noetic-devel.zip",
+  "archive_sha256": "48023678fd9b4854601e80938e79a35b810061992417f01fd3873fae2ac215b9",
+  "model": "FANUC R-2000iC/210L",
+  "records": [
+    {
+      "source": "fanuc-noetic-devel/LICENSE",
+      "path": "fanuc_r2000ic_support/LICENSE.source",
+      "sha256": "84fd5e7adf8b18c239ff05bc4ef9c1364392113f38542be79d0798f1ea952cdc"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/base_link.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/base_link.stl",
+      "sha256": "931d2896ffbfd0a7f26f925fe2129ab1284327725f594771173d5336cf3b53cc"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_1.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_1.stl",
+      "sha256": "3fce3267ac15e4db84346ac1474a96004987df19e1ea3484459764379f43e714"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_2.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_2.stl",
+      "sha256": "0f575cc54ea46e45ea59828a2f2f55735e6da6877652488247c420f6dfaf0a1c"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_3.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_3.stl",
+      "sha256": "c42668d8e46a771d19249bcab52ddecb24152567d7aa6e0f607766314baedd16"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_4.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_4.stl",
+      "sha256": "276539c54254f5157a8fcb3f4b0f9703b5e9e80f2126aa5019b108c541a182ae"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_5.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_5.stl",
+      "sha256": "7470537412bb43b693821da0017f856fc47635c20bff1f19bb88eb0db726cb07"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_6.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/collision/link_6.stl",
+      "sha256": "ae1e617e7a215bd69209be17ccf353815b58aa84da237e116fe3c8ede68d0a48"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/base_link.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/base_link.stl",
+      "sha256": "931d2896ffbfd0a7f26f925fe2129ab1284327725f594771173d5336cf3b53cc"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_1.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_1.stl",
+      "sha256": "3fce3267ac15e4db84346ac1474a96004987df19e1ea3484459764379f43e714"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_2.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_2.stl",
+      "sha256": "0f575cc54ea46e45ea59828a2f2f55735e6da6877652488247c420f6dfaf0a1c"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_3.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_3.stl",
+      "sha256": "c42668d8e46a771d19249bcab52ddecb24152567d7aa6e0f607766314baedd16"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_4.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_4.stl",
+      "sha256": "276539c54254f5157a8fcb3f4b0f9703b5e9e80f2126aa5019b108c541a182ae"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_5.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_5.stl",
+      "sha256": "7470537412bb43b693821da0017f856fc47635c20bff1f19bb88eb0db726cb07"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_6.stl",
+      "path": "fanuc_r2000ic_support/meshes/r2000ic210l/visual/link_6.stl",
+      "sha256": "ae1e617e7a215bd69209be17ccf353815b58aa84da237e116fe3c8ede68d0a48"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/package.xml",
+      "path": "fanuc_r2000ic_support/package.xml",
+      "sha256": "03de4fadbdffc3aa1a9c0da4743b2dd3c6bcba6e8587ec2632d40f7612643717"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/urdf/r2000ic210l.xacro",
+      "path": "fanuc_r2000ic_support/urdf/r2000ic210l.xacro",
+      "sha256": "276db799da806b477a4c65cd2ac3864913dbea0ff12469b324e87fc0a19d81df"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_r2000ic_support/urdf/r2000ic210l_macro.xacro",
+      "path": "fanuc_r2000ic_support/urdf/r2000ic210l_macro.xacro",
+      "sha256": "7b51dbcf06c275907c970bf0bbec88404300d458b80e637607b04252ce2a1a68"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_resources/urdf/common_colours.xacro",
+      "path": "fanuc_resources/urdf/common_colours.xacro",
+      "sha256": "a88319872415db836f224ed84aae82c23b70cc27b3617fc08c4876d5dce62b48"
+    },
+    {
+      "source": "fanuc-noetic-devel/fanuc_resources/urdf/common_materials.xacro",
+      "path": "fanuc_resources/urdf/common_materials.xacro",
+      "sha256": "38a42245ca346c8776690a67bbccf6b153ed569050d35984414764b07444fe16"
+    }
+  ],
+  "conversion": "Only prefix, pi and radians arithmetic expanded; original resources preserved",
+  "tool": "Source archive has no site gripper; separate 600x800x250mm virtual envelope will be configured"
+}

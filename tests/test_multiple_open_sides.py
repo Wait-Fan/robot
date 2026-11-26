@@ -83,7 +83,7 @@ class MultipleSideTests(unittest.TestCase):
         with self.assertRaises(PackingCancelled):
             executable_sequence([item('A')],Pallet(1,1,1),PaperConfig(),
                 ApproachConfig(open_directions=['+Z','-X']),cancelled=lambda:True)
-        window=RobotWorkbench(ROOT)
+        window=RobotWorkbench(ROOT,restore_workcell=False)
         try:
             window.approach_direction='-X'
             window.document={'robot_diagnostics':{'passed':True,'open_direction':'-X'}}
@@ -98,7 +98,7 @@ class MultipleSideTests(unittest.TestCase):
             window.close();window.deleteLater();APP.processEvents()
 
     def test_settings_use_checkboxes_and_require_at_least_one(self):
-        window = RobotWorkbench(ROOT)
+        window = RobotWorkbench(ROOT,restore_workcell=False)
         failures = []
         def interact():
             try:

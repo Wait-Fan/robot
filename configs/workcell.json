@@ -1,0 +1,198 @@
+{
+  "length_scale_to_m": 0.001,
+  "base_T_pallet": [
+    [
+      1.0,
+      -0.0,
+      0.0,
+      -1.148748927397105
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      1.360151366593195
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.15
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "pick_tcp_pose": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      1.9997009970492303
+    ],
+    [
+      0.0,
+      -1.0,
+      0.0,
+      -0.07331871072870312
+    ],
+    [
+      0.0,
+      0.0,
+      -1.0,
+      0.8999999999999999
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "approach_distance_m": 0.08,
+  "path_budget_seconds": 3.0,
+  "calibration_status": "virtual_workcell_unmeasured",
+  "sequence_budget_seconds": 30,
+  "pallet_thickness_m": 0.04,
+  "robot_id": "fanuc_r2000ic210l",
+  "robot_name": "FANUC R-2000iC/210L",
+  "urdf": "../robot_models/fanuc_r2000ic_support/urdf/r2000ic210l.urdf",
+  "srdf": "../robot_models/fanuc_r2000ic_support/urdf/r2000ic210l.srdf",
+  "tip_link": "packing_tcp",
+  "touch_links": [
+    "packing_tool",
+    "packing_tcp"
+  ],
+  "tool_definition": {
+    "kind": "box_envelope",
+    "parent_link": "tool0",
+    "size_m": [
+      0.6,
+      0.8,
+      0.25
+    ],
+    "footprint_source": "user_provided_600x800mm",
+    "height_source": "provisional_250mm"
+  },
+  "tool_status": "footprint_provided_height_provisional",
+  "box_T_tcp_rotation": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      -1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      -1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "tcp_offset_from_box_top_m": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "initial_joints_rad": [
+    1.5707963267948966,
+    0.0,
+    0.0,
+    0.0,
+    -1.5707963267948966,
+    0.0
+  ],
+  "pallet_frame_convention": "long_side_x",
+  "pallet_dimensions_m": [
+    1.2,
+    0.8,
+    1.4000000000000001
+  ],
+  "pick_surface": {
+    "pose": [
+      [
+        1.0,
+        -0.0,
+        0.0,
+        1.9997009970492303
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        -0.07331871072870312
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.7
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "fixed_obstacles": [
+    {
+      "id": "pickup_table",
+      "size": [
+        0.8,
+        0.7,
+        0.7
+      ],
+      "pose": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          1.9997009970492303
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.07331871072870312
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.35
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    }
+  ],
+  "workcell_editor": {
+    "version": 1,
+    "sample_box_m": [
+      0.3,
+      0.2,
+      0.2
+    ]
+  }
+}

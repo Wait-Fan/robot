@@ -14,7 +14,9 @@ from pathlib import Path
 from PyQt5 import QtCore as C,QtGui as G,QtWidgets as W
 
 from .paper_config import PaperConfig
-from .qt_widgets import MetricCard,PalletCanvas,PalletCard,WORKBENCH_STYLE
+from .run_control import PackingTimedOut
+from .models import Pallet
+from .qt_widgets import MetricCard,PalletCanvas,PalletCard,WORKBENCH_STYLE,HistoryItemDelegate
 from .workbench_service import PackingCancelled,finite_number,inspect_input,load_result,run_packing_job
 
 APP_VERSION="0.4.1"
@@ -58,6 +60,7 @@ class PackingWorker(C.QObject):
     log=C.pyqtSignal(str)
     result=C.pyqtSignal(object)
     stopped=C.pyqtSignal()
+    expired=C.pyqtSignal(str)
     failed=C.pyqtSignal(str)
     finished=C.pyqtSignal()
 
@@ -71,6 +74,8 @@ class PackingWorker(C.QObject):
         try:
             result=run_packing_job(*self.args,**self.options,cancelled=self.cancel_event.is_set,
                                    progress=self.progress.emit,log=self.log.emit)
+        except PackingTimedOut as exc:
+            self.expired.emit(str(exc))
         except PackingCancelled:
             self.stopped.emit()
         except Exception as exc:
@@ -89,6 +94,7 @@ class PackingWorkbench(W.QMainWindow):
         self.input_path=self.input_info=self.document=self.result_path=None
         self.dimensions=["1200","800","1400"]
         self.support="1.0"
+        self.max_job_minutes=60.
         self.paper_parameters={"pallet_weight":"25","com_deviation_fraction":"0.25",
                                "corner_inset_fraction":"0.01","seed":"42"}
         self.output_dir=self.project_dir/"output"
@@ -100,6 +106,8 @@ class PackingWorkbench(W.QMainWindow):
         self._history_paths={}
         self.page=self.step=0
         self.overview_cards=[]
+        self._motion_windows={}
+        self._view_revision=0;self._job_start_view_revision=0;self._pending_result_path=None
         self.log_lines=[]
         self.table_rows=[]
         self.setWindowTitle(f"Ananno 2024 · PyQt5版 v{APP_VERSION} · 三维装箱工作台")
@@ -204,7 +212,14 @@ class PackingWorkbench(W.QMainWindow):
         self.open_button=button("打开结果",self.choose_result,"darkButton")
         row.addWidget(self.settings_button);row.addWidget(self.open_button)
         row.addWidget(label("历史结果"))
-        self.history=W.QComboBox();self.history.setMinimumWidth(120)
+        self.history=W.QComboBox();self.history.setObjectName('historyCombo');self.history.setMinimumWidth(120)
+        self.history.setItemDelegate(HistoryItemDelegate(self.history))
+        history_view=self.history.view()
+        history_view.setMinimumWidth(620)
+        history_view.setStyleSheet('QAbstractItemView {background:#ffffff;color:#1f2937;selection-background-color:#2563eb;selection-color:#ffffff;font-size:12px;border:1px solid #64748b;} QAbstractItemView::item {min-height:28px;padding:3px 8px;} QAbstractItemView::item:selected {background:#2563eb;color:#ffffff;}')
+        palette=history_view.palette();palette.setColor(G.QPalette.Text,G.QColor('#1f2937'));palette.setColor(G.QPalette.Base,G.QColor('#ffffff'))
+        palette.setColor(G.QPalette.Highlight,G.QColor('#2563eb'));palette.setColor(G.QPalette.HighlightedText,G.QColor('#ffffff'));history_view.setPalette(palette)
+        self.history.setMaxVisibleItems(12)
         self.history.setSizePolicy(W.QSizePolicy.Ignored,W.QSizePolicy.Fixed)
         self.history.activated.connect(self._open_history)
         row.addWidget(self.history,1)
@@ -222,6 +237,11 @@ class PackingWorkbench(W.QMainWindow):
         self.result_summary=label("尚无结果",wrap=True)
         self.progress_bar=W.QProgressBar();self.progress_bar.setRange(0,100);self.progress_bar.setValue(0)
         items.addWidget(self.progress_text);items.addWidget(self.progress_bar);items.addWidget(self.result_summary)
+        self.computation_time=label("算法计算时间：—",wrap=True)
+        self.computation_time.setToolTip("装箱求解及求解器初始化耗时，包含启用的机器人验证；不含输入读取和结果导出。")
+        items.addWidget(self.computation_time)
+        self.latest_result_button=button('查看本次结果',self.show_latest_result,'primaryButton')
+        self.latest_result_button.hide();items.addWidget(self.latest_result_button)
         layout.addWidget(box)
         box,items=panel("❷ 筛选托盘")
         self.input_summary=label("支持CSV、标准JSON和zhuang接口JSON。",wrap=True,name="muted")
@@ -279,7 +299,8 @@ class PackingWorkbench(W.QMainWindow):
         self.color_combo=W.QComboBox();self.color_combo.addItems(["按箱子着色","按箱型着色","按高度着色"])
         self.color_combo.currentTextChanged.connect(self.render_detail)
         self.labels_check=W.QCheckBox("显示序号");self.labels_check.toggled.connect(self.render_detail)
-        bar.addWidget(self.pallet_combo);bar.addStretch(1);bar.addWidget(self.labels_check);bar.addWidget(self.color_combo)
+        self.motion_detail_button=button('机械臂回放',lambda:self.open_robot_replay(self._selected_index))
+        bar.addWidget(self.pallet_combo);bar.addWidget(self.motion_detail_button);bar.addStretch(1);bar.addWidget(self.labels_check);bar.addWidget(self.color_combo)
         detail.addLayout(bar)
         self.detail_canvas=PalletCanvas();detail.addWidget(self.detail_canvas,1)
         controls=W.QHBoxLayout();self.animation_buttons=[]
@@ -356,7 +377,11 @@ class PackingWorkbench(W.QMainWindow):
         self.log_lines=self.log_lines[-1500:]
         self.last_log.setText(text[:120])
         self.log_box.append(self.log_lines[-1])
-        if self.running and text.startswith(("Phase 1","Phase 2","GA 第")):self.progress_text.setText(text)
+        if self.running and text.startswith(("Phase 1","Phase 2","GA 第","GA 候选","机器人验证","任务进度","详细验证")):self.progress_text.setText(text)
+
+    def _view_error(self,message):
+        self._log('读取结果失败：'+message+('；后台计算仍在继续。' if self.running else ''))
+        W.QMessageBox.warning(self,'无法打开结果',message)
 
     def _error(self,message):
         self._set_status("运行失败");self._log("错误："+message)
@@ -365,7 +390,7 @@ class PackingWorkbench(W.QMainWindow):
     def _set_status(self,text):
         self.status_label.setText(text)
         tone=("busy" if text in ("计算中","正在载入") else "error" if text=="运行失败" else
-              "stopped" if text in ("正在停止","已停止") else "idle" if text=="空闲" else "done")
+              "stopped" if text in ("正在停止","已停止","已超时（未完成）") else "idle" if text=="空闲" else "done")
         self.status_label.setProperty("statusTone",tone)
         self.status_label.style().unpolish(self.status_label);self.status_label.style().polish(self.status_label)
 
@@ -384,6 +409,8 @@ class PackingWorkbench(W.QMainWindow):
         if info["pallet"]:self.dimensions=[str(v) for v in info["pallet"]]
         self._input_summary()
         self._log(f"已选择输入：{path}")
+        if info.get('pallet_axes_swapped'):
+            self._log(f'托盘已按长边X、短边Y调整：X={self.dimensions[0]}，Y={self.dimensions[1]}，Z限高={self.dimensions[2]}。')
         if info["kind"]=="wcs_json":self._log(f"接口JSON全部读取：{info['case_types']}；统一托盘规格须在装箱设置中确认。")
         if info["kind"]=="xlsx":
             self._log(f"Excel 工作表：{info['worksheet']}；箱内零件数量与订单字段不参与箱数展开。")
@@ -395,6 +422,7 @@ class PackingWorkbench(W.QMainWindow):
         if not data:return
         method="同型成层，剩余箱按箱型排列搜索。" if self.mode_combo.currentText()!="基础模式" else "输入行顺序即固定装箱顺序。"
         text=f"{data['box_types']} 种箱型 · {data['boxes']} 箱\n{method}"
+        text+=f'\n本次托盘：X长边 {self.dimensions[0]} × Y短边 {self.dimensions[1]} × Z限高 {self.dimensions[2]}'
         if self.input_info["kind"]=="wcs_json":text+="\n接口JSON全部读取；请确认统一托盘尺寸，不按订单自动分组。"
         if self.input_info["kind"]=="xlsx":
             text+=f"\nExcel：{self.input_info['worksheet']}；不按订单分组。"
@@ -427,13 +455,15 @@ class PackingWorkbench(W.QMainWindow):
         dialog=W.QDialog(self);dialog.setWindowTitle("装箱设置");dialog.resize(470,540)
         layout=W.QVBoxLayout(dialog);form=W.QFormLayout()
         fields={}
-        for key,value,title in [(f"dim{i}",v,t) for i,(v,t) in enumerate(zip(self.dimensions,("托盘长 / X","托盘宽 / Y","最大高 / Z")))]+[
+        for key,value,title in [(f"dim{i}",v,t) for i,(v,t) in enumerate(zip(self.dimensions,("托盘长边 / X","托盘短边 / Y","最大高 / Z")))]+[
             ("support",self.support,"基础模式最小支撑率"),*[(k,v,t) for (k,v),t in zip(self.paper_parameters.items(),
              ("空托盘质量","重心偏移比例","角点内缩比例","随机种子"))]]:
             entry=W.QLineEdit(value);fields[key]=entry;form.addRow(title,entry)
+        budget=W.QDoubleSpinBox();budget.setObjectName('maxJobMinutes');budget.setRange(.1,1440.);budget.setDecimals(1);budget.setValue(self.max_job_minutes);budget.setSuffix(' 分钟')
+        form.addRow('整次计算总时限',budget)
         fields["support"].setEnabled(self.mode_combo.currentText()=="基础模式")
         layout.addLayout(form)
-        layout.addWidget(label("尺寸单位须与箱体一致。论文支撑使用40%+4角 / 50%+3角 / 75%+2角组合；重心与内缩默认值是研究假设。",wrap=True,name="muted"))
+        layout.addWidget(label("X沿托盘长边，Y沿短边，Z向上；输入反了会自动交换两条底边尺寸。尺寸单位须与箱体一致。论文支撑使用40%+4角 / 50%+3角 / 75%+2角组合。",wrap=True,name="muted"))
         output=W.QLineEdit(str(self.output_dir));layout.addWidget(label("结果保存目录"));layout.addWidget(output)
         def choose():
             folder=W.QFileDialog.getExistingDirectory(dialog,"选择保存目录",output.text())
@@ -444,6 +474,8 @@ class PackingWorkbench(W.QMainWindow):
             try:
                 dims=[fields[f"dim{i}"].text() for i in range(3)]
                 for v in dims:finite_number(v,"托盘尺寸",positive=True)
+                pallet=Pallet(*map(float,dims)).with_long_side_x()
+                dims=[str(v) for v in (pallet.length,pallet.width,pallet.max_height)]
                 support=fields["support"].text()
                 if self.mode_combo.currentText()=="基础模式" and finite_number(support,"支撑率")>1:raise ValueError("支撑率必须位于[0,1]")
                 parameters={k:fields[k].text() for k in self.paper_parameters}
@@ -451,6 +483,9 @@ class PackingWorkbench(W.QMainWindow):
                 if not output.text().strip():raise ValueError("请选择保存目录")
             except ValueError as exc:W.QMessageBox.warning(dialog,"参数错误",str(exc));return
             self.dimensions,self.support,self.paper_parameters=dims,support,parameters
+            self.max_job_minutes=budget.value()
+            self._input_summary()
+            self._log(f'托盘坐标：X长边={dims[0]}，Y短边={dims[1]}，Z限高={dims[2]}。')
             self.output_dir=Path(output.text());self.refresh_history();dialog.accept()
         controls.accepted.connect(accept);controls.rejected.connect(dialog.reject);layout.addWidget(controls)
         dialog.exec_()
@@ -460,19 +495,26 @@ class PackingWorkbench(W.QMainWindow):
         return PaperConfig(**{k:(int(v) if k=="seed" else float(v)) for k,v in parameters.items()})
 
     def _busy(self,busy):
-        for widget in (self.input_button,self.start_button,self.settings_button,self.open_button,self.history,self.mode_combo):widget.setEnabled(not busy)
+        # The worker owns its captured inputs/options. Browsing only updates the view.
+        for widget in (self.input_button,self.start_button,self.settings_button,self.mode_combo):widget.setEnabled(not busy)
+        self.open_button.setEnabled(True);self.history.setEnabled(True)
+        self.settings_button.setToolTip('本次计算参数已锁定，计算结束后可修改。' if busy else '')
         self.order_combo.setEnabled(not busy and bool(self.input_info) and self.input_info["kind"]=="paper")
         self.stop_button.setEnabled(busy)
 
     def _job_options(self):
-        return ({"algorithm":"paper","paper_config":self._paper_config(self.paper_parameters)}
-                if self.mode_combo.currentText()=="论文两阶段" else {"algorithm":"basic"})
+        return ({"algorithm":"paper","paper_config":self._paper_config(self.paper_parameters),"max_seconds":self.max_job_minutes*60}
+                if self.mode_combo.currentText()=="论文两阶段" else {"algorithm":"basic","max_seconds":self.max_job_minutes*60})
 
     def start_packing(self):
         if self.running:return
         if self.input_path is None:W.QMessageBox.information(self,"请选择文件","请先选择CSV或JSON输入文件。");return
         try:
             dims=[finite_number(v,"托盘尺寸",positive=True) for v in self.dimensions]
+            pallet=Pallet(*dims).with_long_side_x()
+            dims=[pallet.length,pallet.width,pallet.max_height]
+            self.dimensions=[str(v) for v in dims]
+            self._input_summary()
             paper=self.mode_combo.currentText()!="基础模式"
             support=1.0 if paper else finite_number(self.support,"支撑率")
             if support>1:raise ValueError("支撑率必须位于[0,1]")
@@ -482,6 +524,8 @@ class PackingWorkbench(W.QMainWindow):
         for card in self.overview_cards:card.pause()
         target=self.output_dir/datetime.now().strftime("run_%Y%m%d_%H%M%S_%f")
         args=(self.input_path,self.order_combo.currentText(),*dims,support,target)
+        self._job_start_view_revision=self._view_revision
+        self._pending_result_path=None;self.latest_result_button.hide()
         self.cancel_event=threading.Event()
         gc.collect()
         self._thread=C.QThread(self)
@@ -492,12 +536,14 @@ class PackingWorkbench(W.QMainWindow):
         self._worker.log.connect(self._log)
         self._worker.result.connect(self._on_result)
         self._worker.stopped.connect(self._on_stopped)
+        self._worker.expired.connect(self._on_timed_out)
         self._worker.failed.connect(self._error)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._job_finished)
         self._busy(True);self.progress_bar.setValue(0);self.progress_text.setText("正在读取输入……");self._set_status("计算中")
         self._log(f"开始：{self.input_path.name}，范围：{self.order_combo.currentText()}，算法：{self.mode_combo.currentText()}")
+        self._log(f"本次运行目录：{target}；总时限 {self.max_job_minutes:g} 分钟。")
         self._thread.start()
 
     def stop_packing(self):
@@ -513,11 +559,23 @@ class PackingWorkbench(W.QMainWindow):
 
     @C.pyqtSlot(object)
     def _on_result(self,result):
-        try:self.load_result_file(result["paths"]["json"])
-        except Exception as exc:self._error(str(exc));return
-        self.progress_bar.setValue(100);self.progress_text.setText(f"完成，用时 {result['elapsed_seconds']:.2f} 秒")
+        preserve_view=self._view_revision!=self._job_start_view_revision
+        if preserve_view:
+            self._pending_result_path=Path(result['paths']['json'])
+            self.latest_result_button.show()
+        else:
+            try:self.load_result_file(result["paths"]["json"])
+            except Exception as exc:self._error(str(exc));return
+        self.progress_bar.setValue(100)
+        self.progress_text.setText(f"完成，总处理时间 {result['elapsed_seconds']:.3f} 秒（含读取和导出）"+
+            ('\n已保留当前历史画面，可点击“查看本次结果”。' if preserve_view else ''))
         self._set_status("已完成");self.refresh_history()
-        self._log(f"完成：{result['packed_box_count']} 箱，{result['pallet_count']} 托盘。")
+        self._log(f"完成：{result['packed_box_count']} 箱，{result['pallet_count']} 托盘；算法计算时间 {result['algorithm_seconds']:.3f} 秒，总处理时间 {result['elapsed_seconds']:.3f} 秒。")
+
+    @C.pyqtSlot(str)
+    def _on_timed_out(self,message):
+        self._set_status('已超时（未完成）');self.progress_text.setText(message)
+        self._log(message)
 
     @C.pyqtSlot()
     def _on_stopped(self):
@@ -535,11 +593,20 @@ class PackingWorkbench(W.QMainWindow):
         path,_=W.QFileDialog.getOpenFileName(self,"打开装箱方案",str(self.output_dir),"装箱方案 (*.json)")
         if path:
             try:self.load_result_file(path)
-            except Exception as exc:self._error(str(exc))
+            except Exception as exc:self._view_error(str(exc))
+
+    def show_latest_result(self):
+        if self._pending_result_path is None:return
+        try:self.load_result_file(self._pending_result_path)
+        except Exception as exc:self._view_error(str(exc));return
+        self._pending_result_path=None;self.latest_result_button.hide()
 
     def load_result_file(self,path):self.display_document(load_result(path),Path(path))
 
     def display_document(self,document,path=None):
+        self._view_revision+=1
+        for dialog in list(self._motion_windows.values()):dialog.close()
+        self._motion_windows.clear()
         self.pause_animation();self.document,self.result_path=document,Path(path) if path else None
         self.page=0;self._applied_search="";self.search.clear()
         self.pallet_filter.blockSignals(True);self.pallet_filter.clear();self.pallet_filter.addItem("全部托盘")
@@ -547,11 +614,17 @@ class PackingWorkbench(W.QMainWindow):
         self._selected_index=None
         for key,card in self.metrics.items():
             value=document["summary"][key];card.set_value(f"{value:.1%}" if key=="volume_utilization" else str(value))
+        seconds=document.get("timing",{}).get("algorithm_seconds")
+        self.computation_time.setText(f"算法计算时间：{seconds:.3f} 秒" if seconds is not None else "算法计算时间：未记录（旧结果）")
         self.result_info.setText(f"{path.parent.name}\n{path.name}" if path else "当前计算结果")
         audit=document.get("paper_diagnostics") or {"mode":"基础模式","checks":["Z0/Z90","边界","AABB","支撑面积"],"note":"没有执行论文完整两阶段算法"}
         self.audit_box.setPlainText(json.dumps(audit,ensure_ascii=False,indent=2))
-        self._result_identity();self.apply_filter();self.tabs.setCurrentIndex(0);self._set_status("已加载")
-        self.progress_bar.setValue(100);self.progress_text.setText("已加载已有结果，未重新计算。")
+        self._result_identity();self.apply_filter();self.tabs.setCurrentIndex(0)
+        if not self.running:
+            self._set_status("已加载");self.progress_bar.setValue(100)
+            self.progress_text.setText("已加载已有结果，未重新计算。")
+        if self._pending_result_path is not None and path is not None and Path(path).resolve()==self._pending_result_path.resolve():
+            self._pending_result_path=None;self.latest_result_button.hide()
         self._log(f"已加载结果：{path or '当前计算结果'}")
 
     def refresh_history(self):
@@ -563,13 +636,13 @@ class PackingWorkbench(W.QMainWindow):
                 except OSError:pass
         self.history.clear();self.history.addItem("选择历史结果…")
         for i,(_,path) in enumerate(sorted(candidates,reverse=True)[:100],1):
-            title=f"{i}. {path.parent.name}/{path.stem}";self.history.addItem(title);self._history_paths[title]=path
+            title=f"{i}. {path.parent.name}/{path.stem}";self.history.addItem(title);self.history.setItemData(i,str(path),C.Qt.ToolTipRole);self._history_paths[title]=path
 
     def _open_history(self,*args):
         path=self._history_paths.get(self.history.currentText())
         if path:
             try:self.load_result_file(path)
-            except Exception as exc:self._error(str(exc))
+            except Exception as exc:self._view_error(str(exc))
 
     def filtered_pallets(self):
         if not self.document:return []
@@ -586,7 +659,7 @@ class PackingWorkbench(W.QMainWindow):
         self.pallet_combo.blockSignals(False)
         indices=[p["pallet_index"] for p in pallets]
         self.select_pallet(self._selected_index if self._selected_index in indices else (indices[0] if indices else None))
-        self.refresh_overview();self.refresh_tables()
+        self.refresh_overview()
 
     def change_page(self,delta):
         self.page=max(0,min(max(0,math.ceil(len(self.filtered_pallets())/4)-1),self.page+delta))
@@ -607,6 +680,7 @@ class PackingWorkbench(W.QMainWindow):
             empty.setAlignment(C.Qt.AlignCenter);self.overview_grid.addWidget(empty,0,0,1,2);return
         for i,pallet in enumerate(pallets[self.page*4:self.page*4+4]):
             card=PalletCard(pallet);card.selected.connect(self.select_pallet);card.expand_requested.connect(self.focus_pallet)
+            card.motion_requested.connect(self.open_robot_replay)
             card.set_selected(pallet["pallet_index"]==self._selected_index)
             self.overview_cards.append(card);self.overview_grid.addWidget(card,i//2,i%2)
 
@@ -625,9 +699,30 @@ class PackingWorkbench(W.QMainWindow):
         self.step_slider.setValue(self.step);self.step_slider.blockSignals(False)
         self._enable_animation(pallet is not None)
         for card in self.overview_cards:card.set_selected(card.pallet["pallet_index"]==index)
-        self._current_metrics(pallet);self.render_detail()
+        self._current_metrics(pallet);self.render_detail();self.refresh_tables()
+        self.motion_detail_button.setEnabled(pallet is not None)
 
     def focus_pallet(self,index):self.select_pallet(index);self.tabs.setCurrentWidget(self.detail_tab)
+
+    def open_robot_replay(self,index):
+        if index is None or self.document is None:return
+        self.select_pallet(index)
+        existing=self._motion_windows.get(index)
+        if existing is not None:
+            existing.show();existing.raise_();existing.activateWindow();return
+        try:
+            from .robot_replay import load_replay_bundle,RobotReplayDialog
+            bundle=load_replay_bundle(self.project_dir,self.document,self.result_path,index)
+            dialog=RobotReplayDialog(bundle,self)
+        except Exception as exc:
+            self._log('机械臂回放无法打开：'+str(exc))
+            W.QMessageBox.information(self,'机械臂回放',str(exc));return
+        self._motion_windows[index]=dialog
+        def forget_dialog(_=None,key=index,instance=dialog):
+            if self._motion_windows.get(key) is instance:self._motion_windows.pop(key,None)
+        dialog.destroyed.connect(forget_dialog)
+        dialog.show();dialog.play()
+        self._log(f'打开托盘 {index} 的已保存机械臂轨迹回放。')
 
     def _current_metrics(self,pallet):
         if not pallet:
@@ -651,7 +746,9 @@ class PackingWorkbench(W.QMainWindow):
                 "volume":f"{volume:.3g}","remaining":f"{max(0,capacity-volume):.3g}"}
         self.selected_title.setText(f"PALLET-{pallet['pallet_index']:03d}")
         self.selected_subtitle.setText(f"已装 {len(items)} 箱 | 填充率 {pallet['volume_utilization']:.1%}")
-        self.current_info.setText(f"{dims['length']:g} × {dims['width']:g} × {dims['height']:g}\n坐标轴、尺寸单位与输入一致。")
+        convention=(self.document or {}).get('coordinate_system',{}).get('pallet_axis_convention')
+        note='X沿长边，Y沿短边，Z向上。' if convention=='long_side_x' else '历史/输入坐标：X=length，Y=width，Z向上。'
+        self.current_info.setText(f"X {dims['length']:g} × Y {dims['width']:g} × Z {dims['height']:g}\n{note}")
         for key,card in self.pallet_metrics.items():card.set_value(values[key])
 
     def _enable_animation(self,enabled):
@@ -690,19 +787,22 @@ class PackingWorkbench(W.QMainWindow):
 
     def refresh_tables(self):
         rows=[]
-        for pallet in self.filtered_pallets():
+        selected=self.current_pallet()
+        for pallet in ([selected] if selected is not None else []):
             for item in pallet["packed_items"]:
                 rows.append([item["sequence"],pallet["pallet_index"],item["id"],item.get("box_type",""),
                     *(item["position"][k] for k in ("x","y","z")),item["orientation"],
                     *(item["placed_size"][k] for k in ("length","width","height"))])
         self.table_rows=sorted(rows,key=lambda row:row[0]);self._fill_table(self.box_table,self.table_rows)
+        title=f"箱子列表 · 托盘 {selected['pallet_index']}（{len(rows)}箱）" if selected is not None else "箱子列表 · 未选托盘"
+        self.tabs.setTabText(self.tabs.indexOf(self.box_table),title)
         failed=(self.document or {}).get("unplaced_items",[])
         self._fill_table(self.unplaced_table,[[i["id"],i.get("box_type",""),
             *(i["size"][k] for k in ("length","width","height")),i["reason"]] for i in failed])
 
     def export_csv(self):
         if not self.document:return
-        path,_=W.QFileDialog.getSaveFileName(self,"导出当前筛选坐标",str(self.output_dir/"filtered_positions.csv"),"CSV (*.csv)")
+        path,_=W.QFileDialog.getSaveFileName(self,"导出选中托盘坐标",str(self.output_dir/"filtered_positions.csv"),"CSV (*.csv)")
         if path:
             try:
                 with Path(path).open("w",encoding="utf-8-sig",newline="") as handle:
@@ -716,6 +816,8 @@ class PackingWorkbench(W.QMainWindow):
         folder.mkdir(parents=True,exist_ok=True);G.QDesktopServices.openUrl(C.QUrl.fromLocalFile(str(folder.resolve())))
 
     def closeEvent(self,event):
+        for dialog in list(self._motion_windows.values()):dialog.close()
+        self._motion_windows.clear()
         self.pause_animation()
         for card in self.overview_cards:card.pause()
         if self.running:

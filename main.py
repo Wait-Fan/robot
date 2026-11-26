@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -35,8 +36,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--support", type=float, default=1.0, help="最小底面支撑率，0 到 1")
     p.add_argument("--algorithm",choices=["basic","paper","robot2025"],default="basic",help="基础、2024两阶段、2025开放方向研究实现")
     p.add_argument("--open-direction",choices=["+X","-X","+Y","-Y","+Z"],action="append",help="允许的接近侧，可重复指定多项；默认+Z，负方向使用--open-direction=-X")
+    p.add_argument("--direction-policy",choices=["preplace_optimized","side_direct_first","first_feasible"],default="preplace_optimized",help="默认短抬升后避障搬运至较高预放置点，再下降/斜下降；保留旧策略供历史对照")
+    p.add_argument("--outside-side",choices=["auto","+X","-X","+Y","-Y"],default="auto",help="跨层先里后外的外侧基准；auto按工位机械臂位置判断，与允许接近方向独立")
     p.add_argument("--paper-config",type=Path,help="论文模式参数JSON；未提供的参数使用显式研究默认值")
-    p.add_argument("--robot-scene",type=Path,help="为robot2025启用EC66离线IK/碰撞/路径检查；需要工位配置JSON")
+    p.add_argument("--robot-scene",type=Path,help="为robot2025启用所选机械臂离线IK/碰撞/路径检查；需要工位配置JSON")
+    p.add_argument("--workcell-editor",action="store_true",help="打开可选择EC66/FANUC的可视化工位编辑器")
+    p.add_argument("--robot-model",choices=['ec66','fanuc_r2000ic210l'],help="工位编辑器预选机械臂型号")
     p.add_argument("--output-csv", type=Path, default=ROOT / "output" / "demo_placements.csv")
     p.add_argument("--output-json", type=Path, help="结构化装箱方案 JSON")
     p.add_argument("--save-plot", type=Path)
@@ -50,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
     if should_launch_gui(argv):
         return launch_gui()
     args = parser().parse_args(argv)
+    if args.workcell_editor:
+        from ananno_phase2.robot_runtime import prepare_robot_runtime
+        prepare_robot_runtime(ROOT,preload=True)
+        from ananno_phase2.workcell_editor import launch_editor
+        return launch_editor(ROOT,args.pallet,args.robot_model)
+    if args.robot_model:raise ValueError('--robot-model用于工位编辑器；计算时型号由--robot-scene指定')
     if args.robot_scene and args.algorithm!='robot2025':raise ValueError('--robot-scene仅用于robot2025模式')
     json_pallet = None
     import_metadata = None
@@ -71,15 +82,19 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Excel 未提供统一托盘尺寸；请通过 --pallet 指定长、宽和限高")
     else:
         boxes = read_boxes_csv(args.input) if args.input else demo_boxes()
-    pallet = Pallet(*args.pallet) if args.pallet else (json_pallet or Pallet(12, 10, 10))
+    input_pallet = Pallet(*args.pallet) if args.pallet else (json_pallet or Pallet(12, 10, 10))
+    pallet = input_pallet.with_long_side_x()
+    if input_pallet.length<input_pallet.width:
+        print(f'托盘已统一为长边X：X={pallet.length:g}，Y={pallet.width:g}，Z限高={pallet.max_height:g}。')
     if args.paper_config and args.algorithm not in ("paper","robot2025"): raise ValueError("--paper-config 仅用于 paper/robot2025")
+    algorithm_started = time.perf_counter()
     if args.algorithm in ("paper","robot2025"):
         from ananno_phase2.paper_config import PaperConfig
         from ananno_phase2.paper_pipeline import PaperTwoPhasePacker,annotate_document
         parameters=json.loads(args.paper_config.read_text(encoding="utf-8-sig")) if args.paper_config else {}
         if args.algorithm=="robot2025":
             from ananno_phase2.robot_pipeline import RobotTwoPhasePacker,annotate_robot_document
-            from ananno_phase2.robot_approach import ApproachConfig
+            from ananno_phase2.robot_approach import ApproachConfig,outside_side_from_workcell
             verifier=None
             if args.robot_scene:
                 import os
@@ -87,13 +102,19 @@ def main(argv: list[str] | None = None) -> int:
                 if dependency_dir.is_dir():sys.path.insert(0,str(dependency_dir))
                 from ananno_phase2.robot_offline import OfflineRobotVerifier
                 verifier=OfflineRobotVerifier(args.robot_scene)
-            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(open_directions=args.open_direction or ('+Z',)),robot_verifier=verifier)
+                verifier.configure_pallet_axes(input_pallet)
+            outside_side=args.outside_side if args.outside_side!='auto' else outside_side_from_workcell(pallet,verifier.base_pallet if verifier is not None else None,length_scale_to_m=verifier.scale if verifier is not None else 1.0)
+            if verifier is not None and outside_side is None:raise ValueError('无法确定里外基准，请用--outside-side手动指定外侧。')
+            print('装箱优先：跨层先里后外，外侧 '+outside_side if outside_side else '里外基准未确定，保留原可行顺序；可用--outside-side手动指定。')
+            packer=RobotTwoPhasePacker(pallet,PaperConfig(**parameters),ApproachConfig(open_directions=args.open_direction or ('+Z',),outside_side=outside_side,direction_policy=args.direction_policy),robot_verifier=verifier)
         else:packer=PaperTwoPhasePacker(pallet,PaperConfig(**parameters))
         result=packer.pack(boxes,log=print)
-        print(("EC66离线IK、网格碰撞、完整抓放路径已通过当前配置模型检查；未验证真实硬件。" if args.robot_scene else "两阶段研究实现；2025模式在允许的开放侧中逐箱选择方向，机械臂IK/关节轨迹未验证。") if args.algorithm=="robot2025" else
+        algorithm_seconds = time.perf_counter() - algorithm_started
+        print((verifier.config.get('robot_name','EC66')+"离线IK、网格碰撞、完整抓放路径已通过当前配置模型检查；未验证真实硬件。" if args.robot_scene else "两阶段研究实现；2025模式在允许的开放侧中逐箱选择方向，机械臂IK/关节轨迹未验证。") if args.algorithm=="robot2025" else
               "论文两阶段研究实现：层/块 + GA + EP；参数假设已记录，论文数值等价尚未验证。")
     else:
         result = FixedSequencePacker(pallet, args.support).pack(boxes)
+        algorithm_seconds = time.perf_counter() - algorithm_started
         print("阶段性复现：固定序列 + 简化 Extreme Points（不是完整论文复现）")
     print("order pallet box   x     y     z   pose    L     W     H")
     for p in result.placements:
@@ -102,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     write_placements_csv(args.output_csv, result)
     output_json = args.output_json
     document=write_packing_plan_json(None,result)
+    document["timing"] = {"algorithm_seconds": algorithm_seconds, "clock": "perf_counter",
+                          "scope": "solver_setup_and_packing_including_enabled_robot_verification; excludes_input_and_export"}
     if import_metadata is not None: document["input_import"] = import_metadata
     if args.algorithm in ("paper","robot2025"):
         if args.algorithm=="robot2025":annotate_robot_document(document,packer)
@@ -114,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         output_json.write_text(json.dumps(document,ensure_ascii=False,indent=2),encoding="utf-8")
     print(f"总箱数={len(boxes)}，已放置={len(result.placements)}，未放置={len(result.unplaced)}，"
           f"托盘数={result.pallet_count}，体积利用率={result.utilization:.2%}")
+    print(f"算法计算时间：{algorithm_seconds:.3f} 秒（含启用的机器人验证，不含读取和导出）")
     for item in result.unplaced:
         print(f"未放置 {item.box.id}: {item.reason}")
     print(f"结果 CSV: {args.output_csv}")

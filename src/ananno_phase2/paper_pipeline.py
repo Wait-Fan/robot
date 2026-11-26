@@ -49,6 +49,10 @@ class PaperTwoPhasePacker:
         from .paper_layers import PaperLayerBuilder
         return PaperLayerBuilder(self.pallet,self.config,cancelled=cancelled,log=log)
 
+    def _optimize_types(self,groups,evaluation,cancelled=None,log=None):
+        from .paper_ga import optimize_types
+        return optimize_types(groups,evaluation,self.config,cancelled=cancelled,log=log)
+
     def pack(self,boxes,*,progress=None,cancelled=None,log=None):
         from .paper_layers import PaperLayerBuilder
         ids=[box.id for box in boxes]
@@ -93,7 +97,7 @@ class PaperTwoPhasePacker:
                 check_cancelled(cancelled)
                 if log: log(f"Phase 2：{len(residuals)} 个剩余箱、{len(groups)} 种箱型，固定 {count} 盘运行 GA。")
                 evaluation=lambda sequence:self.evaluate_sequence(groups,sequence,initial,count,cancelled)
-                optimized=optimize_types(dict(groups),evaluation,self.config,cancelled=cancelled,log=log)
+                optimized=self._optimize_types(dict(groups),evaluation,cancelled=cancelled,log=log)
                 self.diagnostics["ga_attempts"].append({"available_pallets":count,"feasible":optimized.best is not None,
                     "best_type_sequence":optimized.sequence,"generations":optimized.trace})
                 if optimized.best is not None:
@@ -139,7 +143,7 @@ class PaperTwoPhasePacker:
         for key in sequence:
             for box in groups[key]:
                 check_cancelled(cancelled)
-                points=sorted(((index,point) for index,state in enumerate(states) for point in state["points"]),
+                points=sorted(((index,point) for index,state in enumerate(states) if index not in getattr(self,"_sealed_pallet_indices",set()) for point in state["points"]),
                               key=lambda pair:(pair[1].z,pair[1].x**2+pair[1].y**2,pair[0],pair[1].x,pair[1].y))
                 accepted=None
                 for index,point in points:

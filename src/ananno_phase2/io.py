@@ -229,6 +229,12 @@ def write_packing_plan_json(path: str | Path | None, result: PackingResult) -> d
     document = {
         "algorithm": "Ananno 2024 Phase 2 staged reproduction",
         "is_complete_reproduction": False,
+        "coordinate_system": {
+            "pallet_axis_convention": "long_side_x" if result.pallet.length>=result.pallet.width else "input_length_width",
+            "origin": [0,0,0], "origin_description": "托盘装箱底面的一角",
+            "x": "along_pallet_length", "y": "along_pallet_width", "z": "up",
+            "positive_xy": "from_origin_into_pallet", "units": "same_as_input",
+        },
         "pallet": {"length": result.pallet.length, "width": result.pallet.width,
                    "height": result.pallet.max_height},
         "summary": {

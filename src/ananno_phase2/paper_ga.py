@@ -5,6 +5,8 @@ of matching its experimental results. DEAP is optional until optimization runs.
 """
 from __future__ import annotations
 
+import time
+
 from dataclasses import dataclass
 import math
 import random
@@ -60,6 +62,9 @@ def optimize_types(
     config: PaperConfig,
     cancelled: Callable[[], bool] | None = None,
     log: Callable[[str], None] | None = None,
+    *,
+    validate_candidate: Callable[[TypeEvaluation], TypeEvaluation] | None = None,
+    validation_batch_size: int = 3,
 ) -> GAResult:
     """Run DEAP μ+λ/NSGA-II and return the compactness-first Pareto choice.
 
@@ -73,6 +78,8 @@ def optimize_types(
     loop adds cancellation and the paper's infeasible-population stagnation.
     """
     check_cancelled(cancelled)
+    if isinstance(validation_batch_size,bool) or not isinstance(validation_batch_size,int) or validation_batch_size<1:
+        raise ValueError('详细验证批次数必须为正整数')
     try:
         from deap import base, tools
     except ImportError as exc:
@@ -144,12 +151,14 @@ def optimize_types(
 
     def evaluate_invalid(population):
         evaluated = 0
-        for individual in population:
+        for candidate_index,individual in enumerate(population,1):
             check_cancelled(cancelled)
             if individual.fitness.valid:
                 continue
             key = tuple(individual)
             if key not in cache:
+                if log:log(f'GA 候选：第 {candidate_index}/{len(population)} 个开始；累计新评估 {len(cache)+1}')
+                began=time.monotonic()
                 evaluation = evaluator(list(individual))
                 check_cancelled(cancelled)
                 if not isinstance(evaluation, TypeEvaluation):
@@ -158,6 +167,7 @@ def optimize_types(
                     evaluation.heterogeneity, evaluation.compactness
                 )):
                     raise ValueError("可行个体的目标值必须为有限数值")
+                if log:log(f'GA 候选：第 {candidate_index}/{len(population)} 个结束，耗时 {time.monotonic()-began:.2f} 秒；'+('可行' if evaluation.feasible else '本次未通过'))
                 cache[key] = evaluation
                 evaluated += 1
             individual.evaluation = cache[key]
@@ -224,5 +234,21 @@ def optimize_types(
         if stagnant >= config.max_stagnation:
             break
     check_cancelled(cancelled)
+    if validate_candidate is not None:
+        ranked=sorted(((sequence,evaluation) for sequence,evaluation in cache.items() if evaluation.feasible),
+                      key=lambda pair:(-pair[1].compactness,pair[1].heterogeneity,pair[0]))
+        for offset in range(0,len(ranked),validation_batch_size):
+            if log:log(f'详细验证：候选批次 {offset//validation_batch_size+1}，最多 {validation_batch_size} 个；快速筛选不代表路径通过')
+            for rank,(sequence,evaluation) in enumerate(ranked[offset:offset+validation_batch_size],offset+1):
+                if log:log(f"详细验证：候选 {rank}/{len(ranked)} 开始；只重新规划变化的托盘")
+                check_cancelled(cancelled)
+                validated=validate_candidate(evaluation)
+                check_cancelled(cancelled)
+                if not isinstance(validated,TypeEvaluation):raise TypeError('候选验证器必须返回 TypeEvaluation')
+                if validated.feasible:
+                    if not all(math.isfinite(v) for v in (validated.heterogeneity,validated.compactness)):
+                        raise ValueError('详细验证通过个体的目标值必须为有限数值')
+                    return GAResult(validated,list(sequence),trace)
+        return GAResult(None,[],trace)
     return GAResult(preferred.evaluation if preferred is not None else None,
                     list(preferred) if preferred is not None else [], trace)

@@ -17,7 +17,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class RobotUiCliTests(unittest.TestCase):
     def test_2025_window_runs_new_mode_and_identifies_old_results(self):
         with tempfile.TemporaryDirectory() as td:
-            window=RobotWorkbench(ROOT);window.output_dir=Path(td)
+            window=RobotWorkbench(ROOT,restore_workcell=False);window.output_dir=Path(td)
             try:
                 self.assertIn('2025',window.windowTitle())
                 self.assertEqual(window.mode_combo.currentText(),'2025 可达性')

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import subprocess
 import sys
@@ -87,7 +88,11 @@ class PaperPipelineTests(unittest.TestCase):
             with self.assertRaises(PackingCancelled):
                 run_packing_job(source,"全部箱子",2,2,3,1,target,algorithm="paper",paper_config=self.config,
                                 cancelled=event.is_set,log=log)
-            self.assertFalse(list(target.rglob("*.json")))
+            # Cancelled jobs retain diagnostic status, but publish no packing plan.
+            self.assertFalse(list(target.rglob("*_plan.json")))
+            state=json.loads((target/'run_status.json').read_text(encoding='utf-8'))
+            self.assertEqual(state['status'],'cancelled')
+            self.assertFalse(state['completed'])
             self.assertFalse(list(target.rglob("*.csv")))
 
     def test_cli_paper_mode_writes_audited_two_phase_result(self):
