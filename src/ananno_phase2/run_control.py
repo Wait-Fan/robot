@@ -19,6 +19,9 @@ class PackingTimedOut(TimeoutError):
 
 class RobotPlanningIncomplete(RuntimeError):
     """Local motion search remains unknown; do not reject the packing layout."""
+    def __init__(self,message,*,motion_report=None,placements=None,audit=None):
+        super().__init__(message)
+        self.motion_report=motion_report;self.placements=placements;self.audit=audit
 
 
 class JobMonitor(AbstractContextManager):

@@ -28,12 +28,11 @@ def _validated_sequence(placements,pallet,config,approach,verifier=None,cancelle
         seen.add(signature)
         motion=verifier.verify(ordered,pallet,approach,cancelled=cancelled) if verifier is not None else None
         if motion is not None and not motion['passed']:
-            if motion.get('reason') in ('sequence_budget_exhausted','box_validation_budget_exhausted'):
-                raise PackingTimedOut('机器人单箱验证预算耗尽，本次未完成；不会将整盘作为不可行退回GA重算。可在工位布局中调整验证预算；日志已保留。箱号：'+str(motion.get('box_id','未知')))
-            if motion.get('status')=='unverified':
-                raise RobotPlanningIncomplete('机器人局部规划重试后仍未完成，未判定垛型不可行；保留已验证前缀，不退回GA重排。箱 '+str(motion.get('box_id','未知'))+
+            if motion.get('status')=='unverified' or motion.get('reason') in ('sequence_budget_exhausted','box_validation_budget_exhausted'):
+                raise RobotPlanningIncomplete('机器人当前局部路径尚未通过，未判定垛型不可行。箱 '+str(motion.get('box_id','未知'))+
                     '，动作 '+str(motion.get('failed_operation','未知'))+'，原因 '+str(motion.get('reason','未知'))+
-                    ('；诊断：'+str(motion['diagnostic_file']) if motion.get('diagnostic_file') else '；详情见运行日志。'))
+                    ('；诊断：'+str(motion['diagnostic_file']) if motion.get('diagnostic_file') else '；详情见运行日志。'),
+                    motion_report=motion,placements=ordered,audit=audit)
             last_motion=motion
             audit['reason']='robot_'+motion.get('status','unverified')+':'+motion.get('reason','unknown')
             audit['passed']=False
@@ -54,29 +53,60 @@ class RobotLayerBuilder(PaperLayerBuilder):
     def build(self,boxes):
         result=super().build(boxes)
         result.placements[:]=anchor_inside_out(result.placements,self.pallet,self.approach.outside_side)
-        kept=[];failed=[];events=[]
+        kept=[];failed=[];events=[];pending=[];retained_prefixes=[];protected=set()
         pallet_ids=sorted({p.pallet_index for p in result.placements})
         for pallet_number,index in enumerate(pallet_ids,1):
             items=[p for p in result.placements if p.pallet_index==index]
             if self.log:self.log(f'机器人验证：第一阶段托盘 {pallet_number}/{len(pallet_ids)}，{len(items)} 箱')
-            ordered,audit,_=_validated_sequence(items,self.pallet,self.config,self.approach,self.robot_verifier,self.cancelled)
+            partial=False
+            try:ordered,audit,_=_validated_sequence(items,self.pallet,self.config,self.approach,self.robot_verifier,self.cancelled)
+            except RobotPlanningIncomplete as problem:
+                pending.append({'pallet':index+1,'reason':str(problem),'boxes':len(items)})
+                ordered,audit=self._verified_prefix(problem)
+                partial=ordered is not None
+                if ordered is None:
+                    if self.log:self.log(f'第一阶段托盘 {index+1} 暂无可保留的完整前缀，继续检查其他托盘。')
+                    continue
             if ordered is None:
                 failed.append({'pallet':index+1,'reason':audit['reason'],'boxes':len(items)});continue
             new_index=len({p.pallet_index for p in kept})
             for p in ordered:kept.append(replace(p,pallet_index=new_index,order=len(kept)+1))
-            for event in result.diagnostics['layer_placements']:
-                if event['pallet_index']==index:events.append({**event,'pallet_index':new_index})
+            if partial:
+                protected.add(new_index)
+                retained_prefixes.append({'source_pallet':index+1,'pallet':new_index+1,'retained_boxes':len(ordered),'deferred_boxes':len(items)-len(ordered)})
+                events.append({'pallet_index':new_index,'kind':'verified_prefix','box_count':len(ordered)})
+                if self.log:self.log(f'第一阶段托盘 {index+1} 保留并封存已验证 {len(ordered)} 箱；仅失败箱和尾部 {len(items)-len(ordered)} 箱另行安排，继续下一盘。')
+            else:
+                for event in result.diagnostics['layer_placements']:
+                    if event['pallet_index']==index:events.append({**event,'pallet_index':new_index})
         ids={p.box.id for p in kept};residuals=[b for b in boxes if b.id not in ids]
         diagnostics=dict(result.diagnostics)
         diagnostics.update(baseline_phase1_box_count=len(result.placements),phase1_box_count=len(kept),
                            placed_count=len(kept),residual_count=len(residuals),layer_placements=events,
                            robot_rejected_blocks=failed,
+                           robot_motion_pending_blocks=pending,robot_retained_prefixes=retained_prefixes,
                            layers_placed={kind:sum(e['kind']==kind for e in events) for kind in ('full','half','quarter')})
-        if self.log:self.log(f'2025开放侧：第一阶段保留{len(kept)}箱，退回GA的块{len(failed)}个。')
-        if self.owner is not None and self.owner.seal_verified_pallets:
-            self.owner._sealed_pallet_indices={p.pallet_index for p in kept}
-            if self.log:self.log(f'初步结果优先：已封盘 {len(self.owner._sealed_pallet_indices)} 盘；余箱仅进入新托盘，可能增加盘数。')
+        if self.log:self.log(f'2025开放侧：第一阶段保留{len(kept)}箱；恢复部分托盘 {len(retained_prefixes)} 盘，待安排余箱 {len(residuals)} 箱。')
+        if self.owner is not None:
+            self.owner._sealed_pallet_indices=({p.pallet_index for p in kept} if self.owner.seal_verified_pallets else protected)
+            if self.log and self.owner._sealed_pallet_indices:self.log(f'已封存 {len(self.owner._sealed_pallet_indices)} 盘，已验证前缀不会被重新填入箱子。')
         return LayerBuildResult(kept,residuals,len({p.pallet_index for p in kept}),diagnostics)
+
+    def _verified_prefix(self,problem):
+        report=problem.motion_report or {};ordered=problem.placements or []
+        records=report.get('directions_by_box',[]);prefix=[]
+        operations=('approach_pick','pick','lift','transfer','place','retreat')
+        stages=report.get('verified_prefix_stages',[])
+        for p,record in zip(ordered,records):
+            if record.get('box_id')!=p.box.id or record.get('pallet')!=p.pallet_index+1:break
+            actual=[s.get('operation') for s in stages if s.get('box_id')==p.box.id and s.get('pallet')==p.pallet_index+1]
+            if tuple(actual)!=operations:break
+            prefix.append(p)
+        if not prefix:return None,{}
+        # Exact positive-cache verification retains geometry/stability checks.
+        try:confirmed,audit,motion=_validated_sequence(prefix,self.pallet,self.config,self.approach,self.robot_verifier,self.cancelled)
+        except RobotPlanningIncomplete:return None,{}
+        return confirmed,audit
 
 
 class RobotTwoPhasePacker(PaperTwoPhasePacker):
@@ -86,6 +116,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
         self.constraints=RobotExecutionConstraintSet(pallet,self.config)
         self.robot_diagnostics={};self.evaluations=0;self.rejected=0
         self.robot_verifier=robot_verifier;self.robot_rejected=0
+        self.motion_pending_candidates=0;self._pending_evaluation_reports=[]
         self.constraints.tool_config=getattr(robot_verifier,'config',None)
         if robot_verifier is not None and all(hasattr(robot_verifier,key) for key in ('scale','grasp_rotation','tcp_offset','base_pallet')):
             from .robot_grasp import verifier_grasp_config
@@ -97,19 +128,37 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
         return RobotLayerBuilder(self.pallet,self.config,cancelled=cancelled,log=log,approach=self.approach,robot_verifier=self.robot_verifier,owner=self)
 
     def _optimize_types(self,groups,evaluation,cancelled=None,log=None):
+        pending=[]
         if not getattr(self.robot_verifier,'tiered_validation',False):
-            return super()._optimize_types(groups,evaluation,cancelled,log)
+            self._pending_evaluation_reports=[]
+            result=super()._optimize_types(groups,evaluation,cancelled,log)
+            if result.best is None and self._pending_evaluation_reports:raise self._pending_summary(self._pending_evaluation_reports)
+            return result
         from .paper_ga import optimize_types
         batch=self.robot_verifier.config.get('full_validation_batch_size',3)
         def validate(evaluated):
-            ordered,audit,motion=_validated_sequence(evaluated.payload.placements,self.pallet,self.config,
-                self.approach,self.robot_verifier,cancelled)
+            try:
+                ordered,audit,motion=_validated_sequence(evaluated.payload.placements,self.pallet,self.config,
+                    self.approach,self.robot_verifier,cancelled)
+            except RobotPlanningIncomplete as problem:
+                pending.append(problem);self.motion_pending_candidates+=1
+                if log:log(f'当前候选路径待验证（非垛型不可行），继续尝试备用候选。{problem}')
+                return replace(evaluated,validation_status='motion_pending')
             if ordered is None:
                 self.robot_rejected+=1
                 return TypeEvaluation(False,float('inf'),-1,None)
-            return replace(evaluated,payload=replace(evaluated.payload,placements=ordered))
-        return optimize_types(groups,evaluation,self.config,cancelled=cancelled,log=log,
+            return replace(evaluated,payload=replace(evaluated.payload,placements=ordered),validation_status='verified')
+        result=optimize_types(groups,evaluation,self.config,cancelled=cancelled,log=log,
                               validate_candidate=validate,validation_batch_size=batch)
+        if result.best is None and pending:raise self._pending_summary(pending)
+        return result
+
+    def _pending_summary(self,problems):
+        best=max(problems,key=lambda p:(p.motion_report or {}).get('verified_prefix_boxes',0))
+        saver=getattr(self.robot_verifier,'save_pending_report',None)
+        if saver and best.motion_report is not None:saver(best.motion_report)
+        return RobotPlanningIncomplete(f'已尝试 {len(problems)} 个路径未完成候选，备用候选已用尽，尚未得到完整可执行方案；保留已验证检查点。最近诊断：{best}',
+            motion_report=best.motion_report,placements=best.placements,audit=best.audit)
 
     def evaluate_sequence(self,groups,sequence,initial,pallet_count,cancelled=None):
         evaluated=super().evaluate_sequence(groups,sequence,initial,pallet_count,cancelled)
@@ -121,7 +170,10 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
         evaluated=replace(evaluated,payload=replace(evaluated.payload,placements=retained+anchor_inside_out(generated,self.pallet,self.approach.outside_side)))
         checker=self.robot_verifier
         if getattr(checker,'tiered_validation',False):checker=SimpleNamespace(verify=checker.screen)
-        ordered,audit,motion=_validated_sequence(evaluated.payload.placements,self.pallet,self.config,self.approach,checker,cancelled)
+        try:ordered,audit,motion=_validated_sequence(evaluated.payload.placements,self.pallet,self.config,self.approach,checker,cancelled)
+        except RobotPlanningIncomplete as problem:
+            self._pending_evaluation_reports.append(problem);self.motion_pending_candidates+=1
+            return replace(evaluated,feasible=False,heterogeneity=float('inf'),compactness=-1,validation_status='motion_pending')
         if ordered is None:
             if motion is not None:self.robot_rejected+=1
             else:self.rejected+=1
@@ -145,6 +197,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
             external_log=log
             log=lambda message:external_log(public_log_text(message))
         self.evaluations=self.rejected=self.robot_rejected=0
+        self.motion_pending_candidates=0;self._pending_evaluation_reports=[]
         self.constraints.cancelled=cancelled
         self._sealed_pallet_indices=set()
         setter=getattr(self.robot_verifier,'set_log_callback',None)
@@ -169,7 +222,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
             'ik_verified':False,'joint_trajectory_verified':False,'robotstudio_verified':False,
             'assumptions':[('Elevated preplacement directions are candidates only; robot trajectory validation required' if self.approach.direction_policy=='preplace_optimized' else 'One allowed axis-aligned straight final approach per box; box AABB only; gripper/arm not modeled'),
                 'All contacting lower boxes are conservative support prerequisites',
-                'Failed Phase1 pallet blocks return to GA as implementation choice',
+                'Verified Phase1 prefixes are sealed; only deferred tails enter residual optimization',
                 'Each pallet is independently presented at the same workcell; inter-pallet obstacles not modeled',
                 'Dependency traversal implements paper-inspired sequencing, not claimed exact Algorithm1/2 source equivalence']}
         if motion_audit is not None:
@@ -181,6 +234,7 @@ class RobotTwoPhasePacker(PaperTwoPhasePacker):
                 motion_verification=motion_audit,
                 validation_strategy='screen_then_ranked_full_motion' if getattr(self.robot_verifier,'tiered_validation',False) else 'full_motion_every_candidate')
             self.robot_diagnostics['assumptions']=motion_audit['assumptions']
+        self.robot_diagnostics['motion_pending_candidates']=self.motion_pending_candidates
         return replace(result,placements=ordered)
 
 

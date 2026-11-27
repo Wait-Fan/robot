@@ -110,7 +110,7 @@ class WorkcellEditor(W.QDialog):
             planning_form.addRow(title,widget);widget.valueChanged.connect(lambda value,key=key:self._planning_changed(key,value/1000))
         smooth_note=W.QLabel('搬运段可绕障；最后从预放置点下降或斜下降。关节轨迹自动做避障捷径和连续速度/加速度平滑，抓取及释放等操作边界保留停止。')
         smooth_note.setWordWrap(True);planning_form.addRow(smooth_note)
-        note=W.QLabel('局部重试使用不同IK分支/搜索种子，仍受每箱和总时限约束。平滑失败先恢复原路径检查；重试耗尽则保留前缀与诊断并结束为“规划未完成”，不整盘退回GA。缓存仅本次进程有效。')
+        note=W.QLabel('局部重试受单箱和总时限约束。第一阶段可保留并封存已验证前缀，仅余箱另行安排；GA继续尝试备用候选。只有候选用尽仍无完整可执行方案时才结束为“规划未完成”。缓存仅本次进程有效。')
         note.setWordWrap(True);planning_form.addRow(note)
         for widget,key in ((self.box_budget,'box_budget_seconds'),(self.path_budget,'path_budget_seconds'),(self.full_batch,'full_validation_batch_size'),(self.local_retries,'local_motion_retries')):
             widget.valueChanged.connect(lambda value,key=key:self._planning_changed(key,value))

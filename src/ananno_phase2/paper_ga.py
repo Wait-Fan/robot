@@ -23,6 +23,7 @@ class TypeEvaluation:
     heterogeneity: float
     compactness: float
     payload: Any = None
+    validation_status: str | None = None
 
 
 @dataclass
@@ -245,7 +246,7 @@ def optimize_types(
                 validated=validate_candidate(evaluation)
                 check_cancelled(cancelled)
                 if not isinstance(validated,TypeEvaluation):raise TypeError('候选验证器必须返回 TypeEvaluation')
-                if validated.feasible:
+                if validated.feasible and validated.validation_status!='motion_pending':
                     if not all(math.isfinite(v) for v in (validated.heterogeneity,validated.compactness)):
                         raise ValueError('详细验证通过个体的目标值必须为有限数值')
                     return GAResult(validated,list(sequence),trace)

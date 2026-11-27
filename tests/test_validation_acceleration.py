@@ -81,10 +81,10 @@ class ValidationAccelerationTests(unittest.TestCase):
         self.assertTrue(second['passed']);self.assertEqual(len(self.calls),6)
 
     def test_budget_incomplete_is_not_treated_as_rejected_layout(self):
-        from ananno_phase2.run_control import PackingTimedOut
+        from ananno_phase2.run_control import RobotPlanningIncomplete
         class BudgetVerifier:
             def verify(self,*a,**kw):return {'passed':False,'status':'unverified','reason':'box_validation_budget_exhausted','box_id':'A'}
-        with self.assertRaisesRegex(PackingTimedOut,'未完成'):
+        with self.assertRaisesRegex(RobotPlanningIncomplete,'尚未通过'):
             _validated_sequence([self.a],self.pallet,PaperConfig(),self.approach,BudgetVerifier())
 
     def test_path_budget_is_shared_between_ik_and_rrt(self):

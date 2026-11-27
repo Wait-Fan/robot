@@ -53,6 +53,11 @@ class PaperTwoPhasePacker:
         from .paper_ga import optimize_types
         return optimize_types(groups,evaluation,self.config,cancelled=cancelled,log=log)
 
+    def _free_existing_volume(self,placements,pallet_count):
+        sealed=getattr(self,'_sealed_pallet_indices',set())
+        return sum(max(0.,self.pallet.volume-sum(p.box.volume for p in placements if p.pallet_index==index))
+                   for index in range(pallet_count) if index not in sealed)
+
     def pack(self,boxes,*,progress=None,cancelled=None,log=None):
         from .paper_layers import PaperLayerBuilder
         ids=[box.id for box in boxes]
@@ -88,7 +93,7 @@ class PaperTwoPhasePacker:
             from .paper_ga import optimize_types
             groups=defaultdict(list)
             for box in residuals: groups[type_key(box)].append(box)
-            free_volume=phase1.pallet_count*self.pallet.volume-sum(p.box.volume for p in initial)
+            free_volume=self._free_existing_volume(initial,phase1.pallet_count)
             additional=max(0,math.ceil((sum(b.volume for b in residuals)-free_volume-EPS)/self.pallet.volume))
             count=max(1,phase1.pallet_count+additional)
             limit=min(self.config.max_pallets,phase1.pallet_count+len(residuals))
